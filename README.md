@@ -1,9 +1,10 @@
-# Elm Playground
+# Elm Playground (Eigenwijs kids edition)
 
 Create pictures, animations, and games with Elm!
 
 This is the package I wanted when I was learning programming. Start by putting shapes on screen and work up to making games. I hope this package will be fun for a broad range of ages and backgrounds!
 
+The Eigenwijs kids edition adds some features useful in our primary school workshops.
 
 ## Pictures
 
