@@ -166,20 +166,24 @@ type alias PictureMsg =
     ( Int, Int )
 
 
+pictureInit : () -> ( Picture, Cmd PictureMsg )
 pictureInit () =
     ( toScreen 600 600, Cmd.none )
 
 
+pictureView : Picture -> List Shape -> Html.Html PictureMsg
 pictureView =
     render
 
 
+pictureUpdate : PictureMsg -> Picture -> ( Picture, Cmd PictureMsg )
 pictureUpdate ( width, height ) _ =
     ( toScreen (toFloat width) (toFloat height)
     , Cmd.none
     )
 
 
+pictureSubscriptions : Picture -> Sub PictureMsg
 pictureSubscriptions _ =
     E.onResize Tuple.pair
 
@@ -558,6 +562,11 @@ toFrac period (Time posix) =
     toFloat (modBy (round p) ms) / p
 
 
+
+{- BeginOfTime -}
+
+
+beginOfTime : Time
 beginOfTime =
     Time (Time.millisToPosix 0)
 
@@ -616,18 +625,36 @@ animation viewFrame =
         }
 
 
+
+{- The type for animations. -}
+
+
 type Animation
     = Animation E.Visibility Screen Time
 
 
+
+{- AnimationInit -}
+
+
+animationInit : () -> ( Animation, Cmd Msg )
 animationInit () =
     ( Animation E.Visible (toScreen 600 600) (Time (Time.millisToPosix 0))
     , Task.perform GotViewport Dom.getViewport
     )
 
 
+
+{- AnimationView -}
+
+
+animationView : Animation -> (Time -> List Shape) -> Html.Html Msg
 animationView (Animation _ screen time) viewFrame =
     render screen (viewFrame time)
+
+
+
+{- AnimationSubscriptions -}
 
 
 animationSubscriptions : Sub Msg
@@ -756,12 +783,14 @@ initialComputer =
     }
 
 
+gameInit : memory -> () -> ( Game memory, Cmd Msg )
 gameInit initialMemory () =
     ( Game E.Visible initialMemory initialComputer
     , Task.perform GotViewport Dom.getViewport
     )
 
 
+gameView : (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
 gameView viewMemory (Game _ memory computer) =
     render computer.screen (viewMemory computer memory)
 
@@ -770,6 +799,7 @@ gameView viewMemory (Game _ memory computer) =
 -- SUBSCRIPTIONS
 
 
+gameSubscriptions : Game memory -> Sub Msg
 gameSubscriptions (Game visibility _ _) =
     case visibility of
         E.Hidden ->

@@ -5,7 +5,7 @@
     "license": "BSD-3-Clause",
     "version": "0.0.1",
     "exposed-modules": [
-        "Playground", "Eigenwijs/Playground"
+        "Playground", "Eigenwijs.Playground"
     ],
     "elm-version": "0.19.0 <= v < 0.20.0",
     "dependencies": {

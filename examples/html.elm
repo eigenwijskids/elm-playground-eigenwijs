@@ -2,7 +2,7 @@ module Html exposing (init, main)
 
 import Browser
 import Eigenwijs.Playground exposing (..)
-import Html
+import Html exposing (map)
 import Html.Attributes as Html
 
 
@@ -80,6 +80,7 @@ view model =
                     , Html.style "height" "100px"
                     ]
                     [ pictureView model.picture picture
+                        |> map PictureMsg
                     ]
                 , Html.dt [] [ Html.text "Animation" ]
                 , Html.dd
@@ -88,6 +89,7 @@ view model =
                     , Html.style "height" "100px"
                     ]
                     [ animationView model.animation animation
+                        |> map AnimationMsg
                     ]
                 , Html.dt [] [ Html.text "Game" ]
                 , Html.dd
@@ -96,6 +98,7 @@ view model =
                     , Html.style "height" "100px"
                     ]
                     [ gameView gameScene model.game
+                        |> map GameMsg
                     ]
                 ]
             ]
@@ -114,12 +117,12 @@ update msg model =
         PictureMsg m ->
             let
                 ( pictureState, pictureCmd ) =
-                    pictureUpdate m picture
+                    pictureUpdate m model.picture
             in
             ( { model
                 | picture = pictureState
               }
-            , pictureCmd
+            , Cmd.map PictureMsg pictureCmd
             )
 
         AnimationMsg m ->
