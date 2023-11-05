@@ -158,24 +158,34 @@ picture shapes =
         }
 
 
+{-| Picture model
+-}
 type alias Picture =
     Screen
 
 
+{-| Picture message type
+-}
 type alias PictureMsg =
     ( Int, Int )
 
 
+{-| Picture init function
+-}
 pictureInit : () -> ( Picture, Cmd PictureMsg )
 pictureInit () =
     ( toScreen 600 600, Cmd.none )
 
 
+{-| Picture view function
+-}
 pictureView : Picture -> List Shape -> Html.Html PictureMsg
 pictureView =
     render
 
 
+{-| Picture update function
+-}
 pictureUpdate : PictureMsg -> Picture -> ( Picture, Cmd PictureMsg )
 pictureUpdate ( width, height ) _ =
     ( toScreen (toFloat width) (toFloat height)
@@ -183,6 +193,8 @@ pictureUpdate ( width, height ) _ =
     )
 
 
+{-| Picture subscriptions
+-}
 pictureSubscriptions : Picture -> Sub PictureMsg
 pictureSubscriptions _ =
     E.onResize Tuple.pair
@@ -562,10 +574,8 @@ toFrac period (Time posix) =
     toFloat (modBy (round p) ms) / p
 
 
-
-{- BeginOfTime -}
-
-
+{-| BeginOfTime
+-}
 beginOfTime : Time
 beginOfTime =
     Time (Time.millisToPosix 0)
@@ -625,18 +635,14 @@ animation viewFrame =
         }
 
 
-
-{- The type for animations. -}
-
-
+{-| The type for animations.
+-}
 type Animation
     = Animation E.Visibility Screen Time
 
 
-
-{- AnimationInit -}
-
-
+{-| Animation init
+-}
 animationInit : () -> ( Animation, Cmd Msg )
 animationInit () =
     ( Animation E.Visible (toScreen 600 600) (Time (Time.millisToPosix 0))
@@ -644,19 +650,15 @@ animationInit () =
     )
 
 
-
-{- AnimationView -}
-
-
+{-| Animation view
+-}
 animationView : Animation -> (Time -> List Shape) -> Html.Html Msg
 animationView (Animation _ screen time) viewFrame =
     render screen (viewFrame time)
 
 
-
-{- AnimationSubscriptions -}
-
-
+{-| Animation subscriptions
+-}
 animationSubscriptions : Sub Msg
 animationSubscriptions =
     Sub.batch
@@ -666,6 +668,8 @@ animationSubscriptions =
         ]
 
 
+{-| Animation update function
+-}
 animationUpdate : Msg -> Animation -> Animation
 animationUpdate msg ((Animation v s t) as state) =
     case msg of
@@ -783,6 +787,8 @@ initialComputer =
     }
 
 
+{-| Game init function
+-}
 gameInit : memory -> () -> ( Game memory, Cmd Msg )
 gameInit initialMemory () =
     ( Game E.Visible initialMemory initialComputer
@@ -790,6 +796,8 @@ gameInit initialMemory () =
     )
 
 
+{-| Game view function
+-}
 gameView : (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
 gameView viewMemory (Game _ memory computer) =
     render computer.screen (viewMemory computer memory)
@@ -799,6 +807,8 @@ gameView viewMemory (Game _ memory computer) =
 -- SUBSCRIPTIONS
 
 
+{-| Game subscriptions
+-}
 gameSubscriptions : Game memory -> Sub Msg
 gameSubscriptions (Game visibility _ _) =
     case visibility of
@@ -823,18 +833,26 @@ gameSubscriptions (Game visibility _ _) =
 -- GAME HELPERS
 
 
+{-| Game model containing the visibility status, custom data (memory) and the Computer state record.
+-}
 type Game memory
     = Game E.Visibility memory Computer
 
 
+{-| Animation message alias
+-}
 type alias AnimationMsg =
     Msg
 
 
+{-| Game message alias
+-}
 type alias GameMsg =
     Msg
 
 
+{-| Playground message type
+-}
 type Msg
     = KeyChanged Bool String
     | Tick Time.Posix
@@ -846,6 +864,8 @@ type Msg
     | MouseButton Bool
 
 
+{-| Game update function
+-}
 gameUpdate : (Computer -> memory -> memory) -> Msg -> Game memory -> Game memory
 gameUpdate updateMemory msg (Game vis memory computer) =
     case msg of

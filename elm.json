@@ -3,7 +3,7 @@
     "name": "eigenwijskids/elm-playground-eigenwijs",
     "summary": "A fun way to create pictures, animations, and games.",
     "license": "BSD-3-Clause",
-    "version": "0.0.1",
+    "version": "1.0.0",
     "exposed-modules": [
         "Playground", "Eigenwijs.Playground"
     ],
