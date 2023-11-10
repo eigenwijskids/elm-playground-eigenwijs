@@ -1,6 +1,6 @@
 module Eigenwijs.Playground3d exposing
     ( picture, animation, game
-    , Shape, circle, triangle, square, rectangle
+    , Shape, circle, square, rectangle, triangle
     , sphere, cylinder, cube, block
     , move, moveX, moveY, moveZ
     , scale, rotate, roll, pitch, yaw, fade
@@ -13,10 +13,10 @@ module Eigenwijs.Playground3d exposing
     , white, lightGrey, grey, darkGrey, lightCharcoal, charcoal, darkCharcoal, black
     , lightGray, gray, darkGray
     , Number
+    , entity
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    , entity
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -32,7 +32,7 @@ contribute to a collaboratively developed game.
 
 # Shapes
 
-@docs Shape, circle, oval, triangle, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
+@docs Shape, circle, square, rectangle, triangle
 
 
 # 3D Shapes
@@ -40,19 +40,9 @@ contribute to a collaboratively developed game.
 @docs sphere, cylinder, cube, block
 
 
-# Words
-
-@docs words
-
-
-# Images
-
-@docs image
-
-
 # Move Shapes
 
-@docs move, moveUp, moveDown, moveLeft, moveRight, moveForward, moveBackward, moveX, moveY, moveZ
+@docs move, moveX, moveY, moveZ
 
 
 # Customize Shapes
@@ -77,7 +67,7 @@ contribute to a collaboratively developed game.
 
 # Colors
 
-@docs Color, rgb, rgb255, red, orange, yellow, green, blue, purple, brown
+@docs rgb, rgb255, red, orange, yellow, green, blue, purple, brown
 
 
 ### Light Colors
@@ -105,9 +95,14 @@ contribute to a collaboratively developed game.
 @docs Number
 
 
+# Playground Scene3d embeds
+
+@docs entity
+
+
 # Playground Picture embeds
 
-@docs pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture, PictureMsg
+@docs pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
 
 
 # Playground Animation embeds
@@ -1109,11 +1104,26 @@ circle color radius =
     Shape 0 0 0 0 0 0 1 1 (Circle color radius)
 
 
+{-| Make cylinders:
+
+    pillar =
+        cylinder red 10 50
+
+You give a color, the radius and then the height.
+
+-}
 cylinder : Color -> Number -> Number -> Shape
 cylinder color radius height =
     Shape 0 0 0 0 0 0 1 1 (Cylinder color radius height)
 
 
+{-| Make triangles:
+
+    triangle blue 50
+
+You give a color and then its size.
+
+-}
 triangle : Color -> Number -> Shape
 triangle color size =
     Shape 0 0 0 0 0 0 1 1 (Triangle color size)
@@ -1246,6 +1256,17 @@ group shapes =
     Shape 0 0 0 0 0 0 1 1 (Group shapes)
 
 
+{-| Pull a 2D shape "up" to form a 3D body:
+
+    circle blue 20
+        |> extrude 50
+
+This will create a flat circle "extruded" along the
+z-axis to form a 3D cylinder. The extruded form is
+centered around the xy-plane.
+
+-}
+extrude : Number -> Shape -> Shape
 extrude h shape =
     case shape of
         Shape x y z rr rp ry s a (Circle c r) ->
@@ -1265,6 +1286,16 @@ extrude h shape =
             shape
 
 
+{-| Pull a 2D shape "up" to form a 3D body:
+
+    circle blue 20
+        |> pullUp 50
+
+This will create a flat circle "pulled up" (or "extruded") along the
+z-axis to form a 3D cylinder.
+
+-}
+pullUp : Number -> Shape -> Shape
 pullUp h shape =
     case shape of
         Shape x y z rr rp ry s a (Circle c r) ->
@@ -1386,7 +1417,7 @@ scale ns (Shape x y z rr rp ry s o f) =
 
     main =
         picture
-            [ words black "These words are tilted!"
+            [ triangle black 50
                 |> rotate 10
             ]
 
@@ -1399,16 +1430,55 @@ rotate da (Shape x y z rr rp ry s o f) =
     Shape x y z (rr + da) rp ry s o f
 
 
+{-| Rotate shapes in degrees, along the X axis:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle black 50
+                |> roll 10
+            ]
+
+    Search Wikipedia for "roll, pitch, yaw" to find out why it is called "roll". ;)
+
+-}
 roll : Number -> Shape -> Shape
 roll dr (Shape x y z rr rp ry s o f) =
     Shape x y z (rr + dr) rp ry s o f
 
 
+{-| Rotate shapes in degrees, along the Y axis:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle black 50
+                |> pitch 10
+            ]
+
+    Search Wikipedia for "roll, pitch, yaw" to find out why it is called "pitch". ;)
+
+-}
 pitch : Number -> Shape -> Shape
 pitch dp (Shape x y z rr rp ry s o f) =
     Shape x y z rr (rp + dp) ry s o f
 
 
+{-| Rotate shapes in degrees, along the Z axis:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle black 50
+                |> yaw 10
+            ]
+
+    Search Wikipedia for "roll, pitch, yaw" to find out why it is called "yaw". ;)
+
+-}
 yaw : Number -> Shape -> Shape
 yaw dy (Shape x y z rr rp ry s o f) =
     Shape x y z rr rp (ry + dy) s o f
@@ -1649,8 +1719,8 @@ color you want. For example:
     brightPurple =
         rgb255 94 28 221
 
-For rgb255 each number needs to be an integer between 0 and 255.
-For rgb each numer is expected to be a floating point number between 0 and 1.
+For `rgb255` each number needs to be an integer between 0 and 255.
+Also see `rgb`, where each numer is expected to be a floating point number between 0 and 1.
 
 It can be hard to figure out what numbers to pick, so try using a color picker
 like [paletton] to find colors that look nice together. Once you find nice
@@ -1664,6 +1734,28 @@ rgb255 r g b =
     Color.rgb255 (colorClamp r) (colorClamp g) (colorClamp b)
 
 
+{-| RGB stands for Red-Green-Blue. With these three parts, you can create any
+color you want. For example:
+
+    brightBlue =
+        rgb 0.1 0.6 1
+
+    brightGreen =
+        rgb 0.6 1 0.05
+
+    brightPurple =
+        rgb 0.4 0.1 0.8
+
+For `rgb` each numer is expected to be a floating point number between 0 and 1.
+Also see `rgb255`, where each number needs to be an integer between 0 and 255.
+
+It can be hard to figure out what numbers to pick, so try using a color picker
+like [paletton] to find colors that look nice together. Once you find nice
+colors, click on the color previews to get their RGB values.
+
+[paletton]: http://paletton.com/
+
+-}
 rgb : Number -> Number -> Number -> Color
 rgb r g b =
     Color.rgb
@@ -1746,6 +1838,8 @@ material color =
         }
 
 
+{-| Add a 3D shape to a Scene3D scene as an entity.
+-}
 entity : Shape -> Entity WorldCoordinates
 entity (Shape x y z rr rp ry s alpha form) =
     renderForm form
