@@ -2,16 +2,28 @@
 
 Create pictures, animations, and games with Elm!
 
-This is the package I wanted when I was learning programming. Start by putting shapes on screen and work up to making games. I hope this package will be fun for a broad range of ages and backgrounds!
+This package can be used to program 2D and 3D graphics in the familiar way of Elm Playground.
+The graphics can be integrated into your Html and Scene3d based apps.
+The code started out in fact as a fork of https://github.com/evancz/elm-playground
+
+This is the package we wanted when we were learning programming. Start by putting shapes on
+screen and work up to making games. We hope this package will be fun for a broad range of
+ages and backgrounds!
 
 The Eigenwijs kids edition adds some features useful in our primary school workshops.
+
+It is currently under heavy construction: For instance, the first release collided with the
+original Playground package when installed side-by-side. The intention is to allow this, so
+the current version leaves out the Playground module itself (it would intentionally be
+identical anyway), offering Eigenwijs.Playground for 2D and Eigenwijs.Playground3D for 3D
+graphics.
 
 ## Pictures
 
 A picture is a list of shapes. For example, this picture combines a brown rectangle and a green circle to make a tree:
 
 ```elm
-import Playground exposing (..)
+import Eigenwijs.Playground exposing (..)
 
 main =
   picture
@@ -24,12 +36,37 @@ main =
 Play around to get familiar with all the different shapes and transformations in the library.
 
 
+## 3D Pictures 😎
+
+``` elm
+import Eigenwijs.Playground3d exposing (..)
+
+main =
+  picture
+    [ rectangle brown 40 200
+    , circle green 100
+      |> moveY -50
+      |> moveZ 100
+      |> extrude 50
+    , cube red 50
+      |> move -50 0 0
+    ]
+```
+
+Note that it looks very similar to the 2D version above, with the same basic flat shapes you can
+use to make 3D shapes (an "extruded" circle makes a cylinder for instance), and some extra shape
+names, like "cube", "cylinder" and "block" to create 3D shapes in one go.
+
+Note: At the moment not all 2D shapes of Playground are available in 3D - they are supposed to get
+added soon!
+
+
 ## Animations
 
 An animation is a list of shapes that changes over time. For example, here is a spinning triangle:
 
 ```elm
-import Playground exposing (..)
+import Eigenwijs.Playground exposing (..)
 
 main =
   animation view
@@ -50,7 +87,7 @@ Maybe try making a car with spinning octogons as wheels? Try using [`wave`](http
 A game lets you use input from the mouse and keyboard to change your picture. For example, here is a square that moves around based on the arrow keys:
 
 ```elm
-import Playground exposing (..)
+import Eigenwijs.Playground exposing (..)
 
 main =
   game view update (0,0)
@@ -77,19 +114,18 @@ When you start making fancier games, you will store fancier things in memory. Th
 I started off trying to make Pong, then worked on games like Breakout and Space Invaders as I learned more and more. It was really fun, and I hope it will be for you as well!
 
 
-# Share Your Results!
+# Share Your Results :D
 
-If you make something cool, please share a picture, GIF, or video on Twitter! Add `#elmlang` so we can find it!
+The original Playground package already encourages publishing work based on and use of the Playground.
+I would like to add another way of sharing:
 
-And if you start using this package for teaching, please share about that the same way! I know [McMaster Outreach](http://outreach.mcmaster.ca/) has been using a previous iteration of this package to help 4th through 8th graders learn some programming, and I love seeing all the pictures and animations that have come out of that!
+One of the biggest issues with IT nowadays is mental accessibility of technology, both for the general
+public and even for developers themselves. Elm is doing a good job in offering a way to increase mental
+accessibility of code, but the other part is visibility and availability of a stimulating and inspiring
+environment for having discussions about technology, dreaming and building together, and helping one
+another out in discovering and learning to wield the super power of independent collaborative
+software development.
 
-
-# Future Work
-
-I think it would be great to develop some learning resources that use "making games" as motivation for learning lists, records, custom types, etc.
-
-My learning path was attempting to recreate Pong, then Breakout, then Space Invaders, and then Zelda. This sequence of games started me off just thinking about math for collisions, then about using lists to track many collisions, then making things fancier to handle moving ships, and finally, working with complex characters with health and inventory. Each new game built on the ones before, introducing new concepts gradually and giving me a long time to get comfortable with them.
-
-That is what I did, but I think people should explore this independently! Maybe you have a path that works well for their 10th graders, maybe someone else has a path that works well for their 5th graders, etc.
-
-My instinct is that we can make it really fun to learn programming, and I am excited to hear about anyone who makes progress in that general direction. So please share your materials and results!
+So, let's have recurring "public coding" sessions in our local communities, like in a public library
+or cultural hotspot! It would be awesome to spark local technology engagement and cool new open source
+projects this way, as wel as increase visibility of Elm as a very helpful and powerful tool.

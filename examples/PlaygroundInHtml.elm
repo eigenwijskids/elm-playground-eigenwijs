@@ -1,4 +1,4 @@
-module Html exposing (init, main)
+module PlaygroundInHtml exposing (init, main)
 
 import Browser
 import Eigenwijs.Playground exposing (..)
