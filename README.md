@@ -15,7 +15,7 @@ The Eigenwijs kids edition adds some features useful in our primary school works
 It is currently under heavy construction: For instance, the first release collided with the
 original Playground package when installed side-by-side. The intention is to allow this, so
 the current version leaves out the Playground module itself (it would intentionally be
-identical anyway), offering Eigenwijs.Playground for 2D and Eigenwijs.Playground3D for 3D
+identical anyway), offering Eigenwijs.Playground for 2D and Eigenwijs.Playground3d for 3D
 graphics.
 
 ## Pictures
@@ -128,4 +128,4 @@ software development.
 
 So, let's have recurring "public coding" sessions in our local communities, like in a public library
 or cultural hotspot! It would be awesome to spark local technology engagement and cool new open source
-projects this way, as wel as increase visibility of Elm as a very helpful and powerful tool.
+projects this way, as well as increase visibility of Elm as a very helpful and powerful tool.

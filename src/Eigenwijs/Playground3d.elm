@@ -16,7 +16,8 @@ module Eigenwijs.Playground3d exposing
     , entity
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
-    , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+    , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+    , eyesAt, isometric, lookAt
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -112,11 +113,17 @@ contribute to a collaboratively developed game.
 
 # Playground Game embeds
 
-@docs gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+@docs gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+
+
+# Playground Cameras
+
+@docs isometric eyesAt lookAt
 
 -}
 
 import Angle exposing (Angle)
+import Array
 import Axis3d exposing (Axis3d)
 import Block3d
 import Browser
@@ -125,17 +132,22 @@ import Browser.Events as E
 import Camera3d exposing (Camera3d)
 import Color exposing (..)
 import Cylinder3d
+import DelaunayTriangulation2d
 import Direction3d exposing (Direction3d)
 import Eigenwijs.Playground3d.Shape as Shape
 import Html
 import Html.Attributes as H
+import Html.Events.Extra.Touch as Touch
 import Json.Decode as D
-import Length exposing (Meters, centimeters, meters)
+import Length exposing (Length, Meters, centimeters, meters)
 import Physics.Body as Body exposing (Body)
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
 import Physics.World as World exposing (World)
 import Pixels exposing (Pixels, pixels)
+import Point2d exposing (Point2d)
 import Point3d exposing (Point3d)
+import Polyline3d
+import Quantity exposing (zero)
 import Scene3d exposing (Entity, group)
 import Scene3d.Material as Material exposing (Material)
 import Scene3d.Mesh exposing (Mesh)
@@ -144,6 +156,7 @@ import SketchPlane3d
 import Sphere3d
 import Task
 import Time
+import TriangularMesh
 import Vector3d
 import Viewpoint3d exposing (Viewpoint3d)
 
@@ -199,7 +212,7 @@ pictureInit () =
 -}
 pictureView : Picture -> List Shape -> Html.Html Msg
 pictureView =
-    render orthographic
+    render isometric
 
 
 {-| Picture update function
@@ -245,10 +258,23 @@ in games where you want some mouse or keyboard interaction.
 
 -}
 type alias Computer =
-    { mouse : Mouse
+    { touch : List Touch
+    , mouse : Mouse
     , keyboard : Keyboard
     , screen : Screen
     , time : Time
+    }
+
+
+
+-- TOUCH
+
+
+{-| Figure out what is going on with touch (touch pad, touch screen).
+-}
+type alias Touch =
+    { x : Number
+    , y : Number
     }
 
 
@@ -683,7 +709,7 @@ animationInit () =
 animationView : Animation -> (Time -> List Shape) -> Html.Html Msg
 animationView (Animation _ screen time) viewFrame =
     render
-        (camera Point3d.origin 0 ThirdPerson)
+        isometric
         screen
         (viewFrame time)
 
@@ -726,6 +752,9 @@ animationUpdate msg ((Animation v s t) as state) =
             state
 
         MouseButton _ ->
+            state
+
+        TouchMove _ ->
             state
 
 
@@ -789,11 +818,16 @@ Notice that in the `update` we use information from the keyboard to update the
 
 -}
 game : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
-game viewMemory updateMemory initialMemory =
+game =
+    gameWithCamera (always isometric)
+
+
+gameWithCamera : (memory -> Camera) -> (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+gameWithCamera cam viewMemory updateMemory initialMemory =
     let
         view model =
             { title = "Playground"
-            , body = [ gameView viewMemory model ]
+            , body = [ gameView cam viewMemory model ]
             }
 
         update msg model =
@@ -811,7 +845,8 @@ game viewMemory updateMemory initialMemory =
 
 initialComputer : Computer
 initialComputer =
-    { mouse = Mouse 0 0 False False
+    { touch = []
+    , mouse = Mouse 0 0 False False
     , keyboard = emptyKeyboard
     , screen = toScreen 600 600
     , time = beginOfTime
@@ -829,10 +864,10 @@ gameInit initialMemory () =
 
 {-| Game view function
 -}
-gameView : (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
-gameView viewMemory (Game _ memory computer) =
+gameView : (memory -> Camera) -> (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
+gameView cam viewMemory (Game _ memory computer) =
     render
-        (camera Point3d.origin 0 ThirdPerson)
+        (cam memory)
         computer.screen
         (viewMemory computer memory)
 
@@ -885,11 +920,35 @@ type alias GameMsg =
     Msg
 
 
+{-| Camera type
+-}
+type alias Camera =
+    { mode : CameraMode
+    , target : Point3d Meters WorldCoordinates
+    }
+
+
 {-| Camera Mode type
 -}
 type CameraMode
-    = ThirdPerson
-    | FirstPerson
+    = FirstPerson (Point3d Meters WorldCoordinates) Angle
+    | Isometric Length Length
+    | Orbit Number Number Number Angle
+
+
+isometric : Camera
+isometric =
+    Camera (Isometric (Length.meters 10) (Length.meters 5)) Point3d.origin
+
+
+eyesAt : Number -> Number -> Number -> Camera
+eyesAt x y z =
+    Camera (FirstPerson (Point3d.centimeters x y z) (Angle.degrees 40)) (Point3d.centimeters 0 0 0)
+
+
+lookAt : Number -> Number -> Number -> Camera -> Camera
+lookAt x y z cam =
+    { cam | target = Point3d.centimeters x y z }
 
 
 {-| Playground message type
@@ -903,6 +962,7 @@ type Msg
     | MouseMove Float Float
     | MouseClick
     | MouseButton Bool
+    | TouchMove Touch.Event
 
 
 {-| Game update function
@@ -942,6 +1002,20 @@ gameUpdate updateMemory msg (Game vis memory computer) =
 
         MouseButton isDown ->
             Game vis memory { computer | mouse = mouseDown isDown computer.mouse }
+
+        TouchMove te ->
+            Game vis
+                memory
+                { computer
+                    | touch =
+                        List.map
+                            (\{ clientPos } ->
+                                case clientPos of
+                                    ( x, y ) ->
+                                        { x = x, y = y }
+                            )
+                            te.touches
+                }
 
         VisibilityChanged visibility ->
             Game visibility
@@ -1080,11 +1154,18 @@ type Form
     | Triangle Color Number
     | Square Color Number
     | Rectangle Color Number Number
-      --| Snake Color (List (Number, Number))
+    | Polygon Color (List ( Number, Number ))
+    | Snake Color (List ( Number, Number, Number ))
     | Sphere Color Number
     | Cylinder Color Number Number
     | Cube Color Number
     | Block Color Number Number Number
+    | Prism Color Number Number
+
+
+
+--    | ExtrudedPolygon Color Number (List ( Number, Number ))
+--    | Wall Color Number (List ( Number, Number ))
 
 
 {-| Make circles:
@@ -1165,6 +1246,25 @@ part of the cross, the thinner and taller part.
 rectangle : Color -> Number -> Number -> Shape
 rectangle color width height =
     Shape 0 0 0 0 0 0 1 1 (Rectangle color width height)
+
+
+{-| Make any shape you want! Here is a very thin triangle:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ polygon black [ ( -10, -20 ), ( 0, 100 ), ( 10, -20 ) ]
+            ]
+
+**Note:** If you [`rotate`](#rotate) a polygon, it will always rotate around
+`(0,0)`. So it is best to build your shapes around that point, and then use
+[`move`](#move) or [`group`](#group) so that rotation makes more sense.
+
+-}
+polygon : Color -> List ( Number, Number ) -> Shape
+polygon color points =
+    Shape 0 0 0 0 0 0 1 1 (Polygon color points)
 
 
 {-| Make sphere:
@@ -1282,6 +1382,13 @@ extrude h shape =
         Shape x y z rr rp ry s a (Rectangle c wb hb) ->
             Shape x y z rr rp ry s a (Block c wb hb h)
 
+        Shape x y z rr rp ry s a (Triangle c size) ->
+            Shape x y z rr rp ry s a (Prism c size h)
+
+        --Shape x y z rr rp ry s a (Polygon c points) ->
+        --    Shape x y z rr rp ry s a (ExtrudedPolygon c h points)
+        --Shape x y z rr rp ry s a (Snake c p) ->
+        --    Shape x y z rr rp ry s a (Wall c h p)
         _ ->
             shape
 
@@ -1759,9 +1866,9 @@ colors, click on the color previews to get their RGB values.
 rgb : Number -> Number -> Number -> Color
 rgb r g b =
     Color.rgb
-        (r |> min 0 |> max 1)
-        (g |> min 0 |> max 1)
-        (b |> min 0 |> max 1)
+        (r |> max 0 |> min 1)
+        (g |> max 0 |> min 1)
+        (b |> max 0 |> min 1)
 
 
 colorClamp : Number -> Int
@@ -1780,50 +1887,58 @@ type alias View =
     }
 
 
-render : Camera3d Meters WorldCoordinates -> Screen -> List Shape -> Html.Html msg
+render : Camera -> Screen -> List Shape -> Html.Html Msg
 render cam screen shapes =
-    Scene3d.sunny
-        { camera = cam
-        , clipDepth = Length.centimeters 0.5
-        , dimensions =
-            ( Pixels.int (round screen.width)
-            , Pixels.int (round screen.height)
-            )
-        , background = Scene3d.transparentBackground
-        , entities = List.map entity shapes
-        , shadows = False
-        , upDirection = Direction3d.y
-        , sunlightDirection = Direction3d.yz (Angle.degrees -120)
-        }
+    Html.div
+        [ Touch.onMove TouchMove
+        ]
+        [ Scene3d.sunny
+            { camera = camera cam
+            , clipDepth = Length.centimeters 0.5
+            , dimensions =
+                ( Pixels.int (round screen.width)
+                , Pixels.int (round screen.height)
+                )
+            , background = Scene3d.transparentBackground
+            , entities = List.map entity shapes
+            , shadows = False
+            , upDirection = Direction3d.y
+            , sunlightDirection = Direction3d.yz (Angle.degrees -120)
+            }
+        ]
 
 
-orthographic =
-    Camera3d.orthographic
-        { viewpoint = Viewpoint3d.isometric { focalPoint = Point3d.origin, distance = Length.meters 10 }
-        , viewportHeight = Length.meters 5
-        }
-
-
-camera doel draaiHoek modus =
-    Camera3d.perspective
-        { viewpoint =
-            Viewpoint3d.orbit
-                { focalPoint =
-                    doel
-                        |> Point3d.translateIn Direction3d.z (Length.meters 2)
-                , groundPlane = SketchPlane3d.xy
-                , azimuth = Angle.degrees draaiHoek
-                , elevation = Angle.degrees 15
-                , distance =
-                    case modus of
-                        ThirdPerson ->
-                            Length.meters 3
-
-                        FirstPerson ->
-                            Length.meters 0
+camera cam =
+    case cam.mode of
+        FirstPerson position fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.lookAt
+                        { eyePoint = position
+                        , focalPoint = cam.target
+                        , upDirection = Direction3d.positiveZ
+                        }
+                , verticalFieldOfView = fov
                 }
-        , verticalFieldOfView = Angle.degrees 60
-        }
+
+        Isometric distance height ->
+            Camera3d.orthographic
+                { viewpoint = Viewpoint3d.isometric { focalPoint = cam.target, distance = distance }
+                , viewportHeight = height
+                }
+
+        Orbit azymuth elevation distance fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.orbit
+                        { focalPoint = cam.target
+                        , groundPlane = SketchPlane3d.xy
+                        , azimuth = Angle.degrees azymuth
+                        , elevation = Angle.degrees elevation
+                        , distance = Length.centimeters distance
+                        }
+                , verticalFieldOfView = fov
+                }
 
 
 withColor : Color -> Mesh coordinates { a | normals : () } -> Entity coordinates
@@ -1867,6 +1982,12 @@ renderForm form =
         Rectangle color width height ->
             renderRectangle color width height
 
+        Polygon color points ->
+            renderPolygon color points
+
+        Snake color points ->
+            renderSnake color points
+
         Sphere color radius ->
             renderSphere color radius
 
@@ -1876,8 +1997,15 @@ renderForm form =
         Block color width height depth ->
             renderBlock color width height depth
 
+        Prism color size height ->
+            renderPrism color size height
 
 
+
+--Wall color height points ->
+--    renderWall color height points
+--ExtrudedPolygon color height points ->
+--    renderExtrudedPolygon color height points
 -- RENDER GROUP
 
 
@@ -1925,6 +2053,34 @@ renderRectangle color w h =
 
 
 
+-- RENDER POLYGON
+
+
+renderPolygon : Color -> List ( Number, Number ) -> Entity coordinates
+renderPolygon color points =
+    points
+        |> Array.fromList
+        |> Array.map (\( x, y ) -> Point2d.centimeters x y)
+        |> DelaunayTriangulation2d.fromPoints
+        |> Result.map
+            (DelaunayTriangulation2d.toMesh
+                >> TriangularMesh.mapVertices (Point2d.coordinates >> (\( x, y ) -> Point3d.xyOn SketchPlane3d.xy x y))
+                >> Scene3d.Mesh.indexedFacets
+                >> withColor color
+            )
+        |> Result.withDefault (renderSnake color (points |> List.map (\( x, y ) -> ( x, y, 0 ))))
+
+
+
+--renderExtrudedPolygon : Color -> Number -> List (Number, Number) -> Entity coordinates
+
+
+addPoint : ( Float, Float ) -> String -> String
+addPoint ( x, y ) str =
+    str ++ String.fromFloat x ++ "," ++ String.fromFloat -y ++ " "
+
+
+
 -- RENDER SPHERE
 
 
@@ -1962,6 +2118,82 @@ renderBlock color w h d =
 
 
 
+-- RENDER SNAKE
+
+
+renderSnake : Color -> List ( Number, Number, Number ) -> Entity coordinates
+renderSnake color points =
+    points
+        |> List.map (\( x, y, z ) -> Point3d.centimeters x y z)
+        |> Polyline3d.fromVertices
+        |> Scene3d.Mesh.polyline
+        |> Scene3d.mesh (Material.color color)
+
+
+
+-- RENDER PRISM
+
+
+renderPrism : Color -> Number -> Number -> Entity coordinates
+renderPrism color size height =
+    let
+        s =
+            size / 100
+
+        h =
+            height / 100
+
+        negativeZVector =
+            Direction3d.negativeZ |> Direction3d.toVector
+
+        positiveZVector =
+            Direction3d.positiveZ |> Direction3d.toVector
+
+        p1 =
+            Point3d.unsafe { x = 0, y = s, z = 0 }
+
+        p2 =
+            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = 0 }
+
+        p3 =
+            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = 0 }
+
+        p4 =
+            Point3d.unsafe { x = 0, y = s, z = h }
+
+        p5 =
+            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = h }
+
+        p6 =
+            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = h }
+
+        triangleBottom =
+            [ ( p1, p2, p3 ) ]
+
+        triangleTop =
+            [ ( p4, p5, p6 ) ]
+
+        side1 =
+            [ ( p2, p1, p5 ), ( p1, p4, p5 ) ]
+
+        side2 =
+            [ ( p3, p2, p6 ), ( p2, p5, p6 ) ]
+
+        side3 =
+            [ ( p1, p3, p4 ), ( p3, p6, p4 ) ]
+
+        triangularMesh =
+            TriangularMesh.triangles (List.concat [ triangleTop, side1, side2, side3, triangleBottom ])
+    in
+    Scene3d.Mesh.indexedFacets triangularMesh
+        |> Scene3d.Mesh.cullBackFaces
+        |> withColor color
+
+
+
+-- RENDER WALL
+--renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity coordinates
+--renderWall color height points =
 -- RENDER TRANSFORMS
 
 
