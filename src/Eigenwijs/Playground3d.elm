@@ -1,6 +1,6 @@
 module Eigenwijs.Playground3d exposing
     ( picture, animation, game
-    , Shape, circle, square, rectangle, triangle
+    , Shape, circle, square, rectangle, triangle, polygon, snake
     , sphere, cylinder, cube, block
     , move, moveX, moveY, moveZ
     , scale, rotate, roll, pitch, yaw, fade
@@ -33,7 +33,7 @@ contribute to a collaboratively developed game.
 
 # Shapes
 
-@docs Shape, circle, square, rectangle, triangle
+@docs Shape, circle, square, rectangle, triangle, polygon, snake
 
 
 # 3D Shapes
@@ -1273,6 +1273,13 @@ rectangle color width height =
 polygon : Color -> List ( Number, Number ) -> Shape
 polygon color points =
     Shape 0 0 0 0 0 0 1 1 (Polygon color points)
+
+
+{-| Make a snake!
+-}
+snake : Color -> List ( Number, Number, Number ) -> Shape
+snake color points =
+    Shape 0 0 0 0 0 0 1 1 (Snake color points)
 
 
 {-| Make sphere:
