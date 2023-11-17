@@ -2179,7 +2179,7 @@ renderPrism color size height =
             [ ( p1, p2, p3 ) ]
 
         triangleTop =
-            [ ( p4, p5, p6 ) ]
+            [ ( p6, p5, p4 ) ]
 
         side1 =
             [ ( p2, p1, p5 ), ( p1, p4, p5 ) ]
