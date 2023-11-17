@@ -17,7 +17,7 @@ module Eigenwijs.Playground3d exposing
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    , eyesAt, isometric, lookAt
+    , isometric, eyesAt, lookAt
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -118,7 +118,7 @@ contribute to a collaboratively developed game.
 
 # Playground Cameras
 
-@docs isometric eyesAt lookAt
+@docs isometric, eyesAt, lookAt
 
 -}
 
@@ -822,6 +822,8 @@ game =
     gameWithCamera (always isometric)
 
 
+{-| Create a game using a specific camera for viewing the scene!
+-}
 gameWithCamera : (memory -> Camera) -> (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
 gameWithCamera cam viewMemory updateMemory initialMemory =
     let
@@ -936,16 +938,22 @@ type CameraMode
     | Orbit Number Number Number Angle
 
 
+{-| Create an isometric camera
+-}
 isometric : Camera
 isometric =
     Camera (Isometric (Length.meters 10) (Length.meters 5)) Point3d.origin
 
 
+{-| Create a camera looking from a point x y z, towards the origin (0, 0, 0)
+-}
 eyesAt : Number -> Number -> Number -> Camera
 eyesAt x y z =
-    Camera (FirstPerson (Point3d.centimeters x y z) (Angle.degrees 40)) (Point3d.centimeters 0 0 0)
+    Camera (FirstPerson (Point3d.centimeters x y z) (Angle.degrees 40)) Point3d.origin
 
 
+{-| Modify a camera to look at a specific point x y z
+-}
 lookAt : Number -> Number -> Number -> Camera -> Camera
 lookAt x y z cam =
     { cam | target = Point3d.centimeters x y z }
