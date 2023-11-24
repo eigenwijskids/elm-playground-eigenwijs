@@ -258,7 +258,12 @@ in games where you want some mouse or keyboard interaction.
 
 -}
 type alias Computer =
-    { touch : List Touch
+    { touch :
+        { list : List Touch
+        , current : Maybe Touch
+        , change : Maybe Touch
+        , previous : Maybe Touch
+        }
     , mouse : Mouse
     , keyboard : Keyboard
     , screen : Screen
@@ -847,7 +852,7 @@ gameWithCamera cam viewMemory updateMemory initialMemory =
 
 initialComputer : Computer
 initialComputer =
-    { touch = []
+    { touch = { list = [], current = Nothing, change = Nothing, previous = Nothing }
     , mouse = Mouse 0 0 False False
     , keyboard = emptyKeyboard
     , screen = toScreen 600 600
@@ -1012,17 +1017,37 @@ gameUpdate updateMemory msg (Game vis memory computer) =
             Game vis memory { computer | mouse = mouseDown isDown computer.mouse }
 
         TouchMove te ->
+            let
+                positions =
+                    List.map
+                        (\{ clientPos } ->
+                            case clientPos of
+                                ( x, y ) ->
+                                    { x = x, y = y }
+                        )
+                        te.touches
+
+                position =
+                    List.head positions
+            in
             Game vis
                 memory
                 { computer
                     | touch =
-                        List.map
-                            (\{ clientPos } ->
-                                case clientPos of
-                                    ( x, y ) ->
-                                        { x = x, y = y }
-                            )
-                            te.touches
+                        { list = positions
+                        , current = position
+                        , previous = computer.touch.current
+                        , change =
+                            case ( position, computer.touch.previous ) of
+                                ( Just new, Just old ) ->
+                                    Just
+                                        { x = new.x - old.x
+                                        , y = new.y - old.y
+                                        }
+
+                                _ ->
+                                    Nothing
+                        }
                 }
 
         VisibilityChanged visibility ->
@@ -1169,11 +1194,11 @@ type Form
     | Cube Color Number
     | Block Color Number Number Number
     | Prism Color Number Number
+    | Wall Color Number (List ( Number, Number, Number ))
 
 
 
 --    | ExtrudedPolygon Color Number (List ( Number, Number ))
---    | Wall Color Number (List ( Number, Number ))
 
 
 {-| Make circles:
@@ -1384,6 +1409,12 @@ centered around the xy-plane.
 extrude : Number -> Shape -> Shape
 extrude h shape =
     case shape of
+        Shape x y z rr rp ry s a (Group shapes) ->
+            shapes
+                |> List.map (extrude h)
+                |> Group
+                |> Shape x y z rr rp ry s a
+
         Shape x y z rr rp ry s a (Circle c r) ->
             Shape x y z rr rp ry s a (Cylinder c r h)
 
@@ -1402,8 +1433,9 @@ extrude h shape =
 
         --Shape x y z rr rp ry s a (Polygon c points) ->
         --    Shape x y z rr rp ry s a (ExtrudedPolygon c h points)
-        --Shape x y z rr rp ry s a (Snake c p) ->
-        --    Shape x y z rr rp ry s a (Wall c h p)
+        Shape x y z rr rp ry s a (Snake c p) ->
+            Shape x y z rr rp ry s a (Wall c h p)
+
         _ ->
             shape
 
@@ -1420,6 +1452,12 @@ z-axis to form a 3D cylinder.
 pullUp : Number -> Shape -> Shape
 pullUp h shape =
     case shape of
+        Shape x y z rr rp ry s a (Group shapes) ->
+            shapes
+                |> List.map (pullUp h)
+                |> Group
+                |> Shape x y z rr rp ry s a
+
         Shape x y z rr rp ry s a (Circle c r) ->
             Shape x y (z + h / 2) rr rp ry s a (Cylinder c r h)
 
@@ -1432,6 +1470,12 @@ pullUp h shape =
 
         Shape x y z rr rp ry s a (Rectangle c wb hb) ->
             Shape x y (z + h / 2) rr rp ry s a (Block c wb hb h)
+
+        Shape x y z rr rp ry s a (Triangle c size) ->
+            Shape x y (z + h / 2) rr rp ry s a (Prism c size h)
+
+        Shape x y z rr rp ry s a (Snake c p) ->
+            Shape x y z rr rp ry s a (Wall c h (p |> List.map (\( px, py, pz ) -> ( px, py, pz + h / 2 ))))
 
         _ ->
             shape
@@ -1958,13 +2002,18 @@ camera cam =
 
 withColor : Color -> Mesh coordinates { a | normals : () } -> Entity coordinates
 withColor color =
-    Scene3d.mesh (material color)
+    withMaterial { color = color, roughness = 0.4 }
 
 
-material color =
+withMaterial : { color : Color, roughness : Number } -> Mesh coordinates { a | normals : () } -> Entity coordinates
+withMaterial { color, roughness } =
+    Scene3d.mesh (material color roughness)
+
+
+material color roughness =
     Material.nonmetal
         { baseColor = color
-        , roughness = 0.4
+        , roughness = roughness
         }
 
 
@@ -1986,7 +2035,7 @@ renderForm form =
             renderCircle color radius
 
         Cylinder color radius height ->
-            renderCylinder color radius height
+            renderCylinder { color = color, roughness = 0.4 } radius height
 
         Triangle color size ->
             renderTriangle color size
@@ -2004,21 +2053,22 @@ renderForm form =
             renderSnake color points
 
         Sphere color radius ->
-            renderSphere color radius
+            renderSphere { color = color, roughness = 0.4 } radius
 
         Cube color size ->
-            renderBlock color size size size
+            renderBlock { color = color, roughness = 0.4 } size size size
 
         Block color width height depth ->
-            renderBlock color width height depth
+            renderBlock { color = color, roughness = 0.4 } width height depth
 
         Prism color size height ->
             renderPrism color size height
 
+        Wall color height points ->
+            renderWall color height points
 
 
---Wall color height points ->
---    renderWall color height points
+
 --ExtrudedPolygon color height points ->
 --    renderExtrudedPolygon color height points
 -- RENDER GROUP
@@ -2041,14 +2091,14 @@ renderCircle color radius =
         |> withColor color
 
 
-renderCylinder : Color -> Number -> Number -> Entity coordinates
-renderCylinder color radius height =
+renderCylinder : Material -> Number -> Number -> Entity coordinates
+renderCylinder { color, roughness } radius height =
     Cylinder3d.centeredOn Point3d.origin
         Direction3d.z
         { radius = Length.centimeters radius
         , length = Length.centimeters height
         }
-        |> Scene3d.cylinder (material color)
+        |> Scene3d.cylinder (material color roughness)
 
 
 renderTriangle : Color -> Number -> Entity coordinates
@@ -2099,18 +2149,18 @@ addPoint ( x, y ) str =
 -- RENDER SPHERE
 
 
-renderSphere : Color -> Number -> Entity coordinates
-renderSphere color radius =
+renderSphere : Material -> Number -> Entity coordinates
+renderSphere { color, roughness } radius =
     Sphere3d.withRadius (Length.centimeters radius) Point3d.origin
-        |> Scene3d.sphere (material color)
+        |> Scene3d.sphere (material color roughness)
 
 
 
 -- RENDER BLOCK
 
 
-renderBlock : Color -> Number -> Number -> Number -> Entity coordinates
-renderBlock color w h d =
+renderBlock : Material -> Number -> Number -> Number -> Entity coordinates
+renderBlock { color, roughness } w h d =
     let
         rw =
             w / 2
@@ -2129,7 +2179,7 @@ renderBlock color w h d =
         , z1 = Length.centimeters -rd
         , z2 = Length.centimeters rd
         }
-        |> Scene3d.block (material color)
+        |> Scene3d.block (material color roughness)
 
 
 
@@ -2207,8 +2257,22 @@ renderPrism color size height =
 
 
 -- RENDER WALL
---renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity coordinates
---renderWall color height points =
+
+
+renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity coordinates
+renderWall color height points =
+    TriangularMesh.strip
+        (points
+            |> List.map (\( x, y, z ) -> Point3d.centimeters x y (z - height / 2))
+        )
+        (points
+            |> List.map (\( x, y, z ) -> Point3d.centimeters x y (z + height / 2))
+        )
+        |> Scene3d.Mesh.indexedFacets
+        |> withColor color
+
+
+
 -- RENDER TRANSFORMS
 
 
@@ -2228,6 +2292,10 @@ type alias Rotation =
 
 type alias Scale =
     Number
+
+
+type alias Material =
+    { color : Color, roughness : Number }
 
 
 transform : Translation -> Rotation -> Scale -> Entity coordinates -> Entity coordinates

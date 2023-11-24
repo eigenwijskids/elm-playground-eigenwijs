@@ -40,4 +40,18 @@ main =
                 |> moveX -5
             ]
             |> moveY 100
+        , group
+            [ snake
+                orange
+                [ ( 50, 0, 0 )
+                , ( -110, 0, 0 )
+                , ( -250, 100, 0 )
+                , ( -250, 200, 0 )
+                , ( -200, 200, 0 )
+                ]
+                |> moveY 20
+            , circle purple 30
+                |> move -50 50 0
+            ]
+            |> pullUp 90
         ]
