@@ -138,6 +138,7 @@ import Eigenwijs.Playground3d.Shape as Shape
 import Html
 import Html.Attributes as H
 import Html.Events.Extra.Touch as Touch
+import Html.Lazy exposing (lazy)
 import Json.Decode as D
 import Length exposing (Length, Meters, centimeters, meters)
 import Physics.Body as Body exposing (Body)
@@ -835,6 +836,8 @@ gameWithCamera cam viewMemory updateMemory initialMemory =
         view model =
             { title = "Playground"
             , body = [ gameView cam viewMemory model ]
+
+            --, body = [ lazy (gameView cam viewMemory) model ] -- might not be sensible because of time and its use
             }
 
         update msg model =
@@ -2019,13 +2022,13 @@ material color roughness =
 
 {-| Add a 3D shape to a Scene3D scene as an entity.
 -}
-entity : Shape -> Entity WorldCoordinates
+entity : Shape -> Entity coordinates
 entity (Shape x y z rr rp ry s alpha form) =
     renderForm form
         |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
 
 
-renderForm : Form -> Entity WorldCoordinates
+renderForm : Form -> Entity coordinates
 renderForm form =
     case form of
         Group shapes ->
@@ -2074,7 +2077,7 @@ renderForm form =
 -- RENDER GROUP
 
 
-renderGroup : List Shape -> Entity WorldCoordinates
+renderGroup : List Shape -> Entity coordinates
 renderGroup shapes =
     shapes
         |> List.map entity
