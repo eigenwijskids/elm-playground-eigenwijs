@@ -5,7 +5,7 @@ module Eigenwijs.Playground3d exposing
     , move, moveX, moveY, moveZ
     , scale, rotate, roll, pitch, yaw, fade
     , group, extrude, pullUp
-    , Time, spin, wave, zigzag, beginOfTime
+    , Time, spin, wave, zigzag, beginOfTime, secondsBetween
     , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
     , rgb, rgb255, red, orange, yellow, green, blue, purple, brown
     , lightRed, lightOrange, lightYellow, lightGreen, lightBlue, lightPurple, lightBrown
@@ -17,6 +17,7 @@ module Eigenwijs.Playground3d exposing
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+    , networkGame, Connection
     , isometric, eyesAt, lookAt
     )
 
@@ -58,7 +59,7 @@ contribute to a collaboratively developed game.
 
 # Time
 
-@docs Time, spin, wave, zigzag, beginOfTime
+@docs Time, spin, wave, zigzag, beginOfTime, secondsBetween
 
 
 # Computer
@@ -114,6 +115,7 @@ contribute to a collaboratively developed game.
 # Playground Game embeds
 
 @docs gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+@docs networkGame, Connection
 
 
 # Playground Cameras
@@ -139,7 +141,9 @@ import Html
 import Html.Attributes as H
 import Html.Events.Extra.Touch as Touch
 import Html.Lazy exposing (lazy)
+import Http
 import Json.Decode as D
+import Json.Encode as E
 import Length exposing (Length, Meters, centimeters, meters)
 import Physics.Body as Body exposing (Body)
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
@@ -259,7 +263,9 @@ in games where you want some mouse or keyboard interaction.
 
 -}
 type alias Computer =
-    { touch :
+    { inbox : List Message
+    , secondsBeforeSend : Number
+    , touch :
         { list : List Touch
         , current : Maybe Touch
         , change : Maybe Touch
@@ -269,6 +275,18 @@ type alias Computer =
     , keyboard : Keyboard
     , screen : Screen
     , time : Time
+    }
+
+
+
+-- MESSAGING
+
+
+type alias Message =
+    { sender : String
+    , subject : String
+    , predicate : String
+    , object : String
     }
 
 
@@ -554,6 +572,23 @@ type Time
     = Time Time.Posix
 
 
+timeFromMillis : Int -> Time
+timeFromMillis timestamp =
+    timestamp
+        |> Time.millisToPosix
+        |> Time
+
+
+{-| Return the number of seconds between two instances of Time.
+-}
+secondsBetween : Time -> Time -> Number
+secondsBetween (Time time1) (Time time2) =
+    (Time.posixToMillis time1 - Time.posixToMillis time2)
+        |> abs
+        |> toFloat
+        |> (/) 1000
+
+
 {-| Create an angle that cycles from 0 to 360 degrees over time.
 
 Here is an [`animation`](#animation) with a spinning triangle:
@@ -751,6 +786,9 @@ animationUpdate msg ((Animation v s t) as state) =
         KeyChanged _ _ ->
             state
 
+        MessagesReceived _ ->
+            state
+
         MouseMove _ _ ->
             state
 
@@ -853,9 +891,120 @@ gameWithCamera cam viewMemory updateMemory initialMemory =
         }
 
 
+type alias WithMessages memory =
+    { memory
+        | outbox : List ( String, String, String )
+    }
+
+
+{-| A network Connection with server url, sender name, and the send interval
+in seconds.
+-}
+type alias Connection =
+    { server : String
+    , name : String
+    , sendIntervalInSeconds : Int
+    }
+
+
+{-| Create a network game; a game that has a messages `inbox` field in Computer
+and a messages `outbox` as a field in its memory. The game takes a Connection
+parameter. Messages sent are tagged with your sender name, configured as
+`name` in the Connection.
+-}
+networkGame :
+    Connection
+    -> (Computer -> WithMessages memory -> List Shape)
+    -> (Computer -> WithMessages memory -> WithMessages memory)
+    -> WithMessages memory
+    -> Program () (Game (WithMessages memory)) Msg
+networkGame connection =
+    networkGameWithCamera (always isometric) connection
+
+
+{-| Create a network game using a specific camera for viewing the scene!
+-}
+networkGameWithCamera : (WithMessages memory -> Camera) -> Connection -> (Computer -> WithMessages memory -> List Shape) -> (Computer -> WithMessages memory -> WithMessages memory) -> WithMessages memory -> Program () (Game (WithMessages memory)) Msg
+networkGameWithCamera cam connection viewMemory updateMemory initialMemory =
+    let
+        view model =
+            { title = "Playground"
+            , body = [ gameView cam viewMemory model ]
+
+            --, body = [ lazy (gameView cam viewMemory) model ] -- might not be sensible because of time and its use
+            }
+
+        update msg model =
+            networkGameUpdate updateMemory msg model
+                |> withCommandsFromMessages connection
+    in
+    Browser.document
+        { init = networkGameInit initialMemory
+        , view = view
+        , update = update
+        , subscriptions = gameSubscriptions
+        }
+
+
+withCommandsFromMessages : Connection -> Game (WithMessages memory) -> ( Game (WithMessages memory), Cmd Msg )
+withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibility memory computer) =
+    if computer.secondsBeforeSend <= 0 then
+        ( Game visibility
+            memory
+            { computer
+                | secondsBeforeSend =
+                    if sendIntervalInSeconds < 1 then
+                        1
+
+                    else
+                        toFloat sendIntervalInSeconds
+            }
+        , memory.outbox
+            |> List.map (postMessage server name)
+            |> Cmd.batch
+        )
+
+    else
+        ( Game visibility memory { computer | secondsBeforeSend = computer.secondsBeforeSend - 1 / 60 }
+        , Cmd.none
+        )
+
+
+postMessage : String -> String -> ( String, String, String ) -> Cmd Msg
+postMessage url sender ( subject, predicate, object ) =
+    case String.trim url of
+        "" ->
+            Cmd.none
+
+        trimmedUrl ->
+            Http.post
+                { url = trimmedUrl
+                , expect = Http.expectJson MessagesReceived (D.list messageDecoder)
+                , body =
+                    [ ( "sender", E.string sender )
+                    , ( "subject", E.string subject )
+                    , ( "predicate", E.string predicate )
+                    , ( "object", E.string object )
+                    ]
+                        |> E.object
+                        |> Http.jsonBody
+                }
+
+
+messageDecoder : D.Decoder Message
+messageDecoder =
+    D.map4 Message
+        (D.field "sender" D.string)
+        (D.field "subject" D.string)
+        (D.field "predicate" D.string)
+        (D.field "object" D.string)
+
+
 initialComputer : Computer
 initialComputer =
-    { touch = { list = [], current = Nothing, change = Nothing, previous = Nothing }
+    { inbox = []
+    , secondsBeforeSend = 0
+    , touch = { list = [], current = Nothing, change = Nothing, previous = Nothing }
     , mouse = Mouse 0 0 False False
     , keyboard = emptyKeyboard
     , screen = toScreen 600 600
@@ -867,6 +1016,13 @@ initialComputer =
 -}
 gameInit : memory -> () -> ( Game memory, Cmd Msg )
 gameInit initialMemory () =
+    ( Game E.Visible initialMemory initialComputer
+    , Task.perform GotViewport Dom.getViewport
+    )
+
+
+networkGameInit : WithMessages memory -> () -> ( Game (WithMessages memory), Cmd Msg )
+networkGameInit initialMemory () =
     ( Game E.Visible initialMemory initialComputer
     , Task.perform GotViewport Dom.getViewport
     )
@@ -979,6 +1135,7 @@ type Msg
     | MouseClick
     | MouseButton Bool
     | TouchMove Touch.Event
+    | MessagesReceived (Result Http.Error (List Message))
 
 
 {-| Game update function
@@ -1002,6 +1159,97 @@ gameUpdate updateMemory msg (Game vis memory computer) =
 
         KeyChanged isDown key ->
             Game vis memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+
+        MessagesReceived (Ok messages) ->
+            Game vis memory { computer | inbox = messages }
+
+        MessagesReceived (Err _) ->
+            Game vis memory computer
+
+        MouseMove pageX pageY ->
+            let
+                x =
+                    computer.screen.left + pageX
+
+                y =
+                    computer.screen.top - pageY
+            in
+            Game vis memory { computer | mouse = mouseMove x y computer.mouse }
+
+        MouseClick ->
+            Game vis memory { computer | mouse = mouseClick True computer.mouse }
+
+        MouseButton isDown ->
+            Game vis memory { computer | mouse = mouseDown isDown computer.mouse }
+
+        TouchMove te ->
+            let
+                positions =
+                    List.map
+                        (\{ clientPos } ->
+                            case clientPos of
+                                ( x, y ) ->
+                                    { x = x, y = y }
+                        )
+                        te.touches
+
+                position =
+                    List.head positions
+            in
+            Game vis
+                memory
+                { computer
+                    | touch =
+                        { list = positions
+                        , current = position
+                        , previous = computer.touch.current
+                        , change =
+                            case ( position, computer.touch.previous ) of
+                                ( Just new, Just old ) ->
+                                    Just
+                                        { x = new.x - old.x
+                                        , y = new.y - old.y
+                                        }
+
+                                _ ->
+                                    Nothing
+                        }
+                }
+
+        VisibilityChanged visibility ->
+            Game visibility
+                memory
+                { computer
+                    | keyboard = emptyKeyboard
+                    , mouse = Mouse computer.mouse.x computer.mouse.y False False
+                }
+
+
+networkGameUpdate : (Computer -> WithMessages memory -> WithMessages memory) -> Msg -> Game (WithMessages memory) -> Game (WithMessages memory)
+networkGameUpdate updateMemory msg (Game vis memory computer) =
+    case msg of
+        Tick time ->
+            Game vis (updateMemory computer memory) <|
+                if computer.mouse.click then
+                    { computer | time = Time time, mouse = mouseClick False computer.mouse }
+
+                else
+                    { computer | time = Time time }
+
+        GotViewport { viewport } ->
+            Game vis memory { computer | screen = toScreen viewport.width viewport.height }
+
+        Resized w h ->
+            Game vis memory { computer | screen = toScreen (toFloat w) (toFloat h) }
+
+        KeyChanged isDown key ->
+            Game vis memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+
+        MessagesReceived (Ok messages) ->
+            Game vis memory { computer | inbox = messages }
+
+        MessagesReceived (Err _) ->
+            Game vis memory computer
 
         MouseMove pageX pageY ->
             let
