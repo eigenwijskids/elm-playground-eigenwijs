@@ -903,7 +903,7 @@ in seconds.
 type alias Connection =
     { server : String
     , name : String
-    , sendIntervalInSeconds : Int
+    , sendIntervalInSeconds : Number
     }
 
 
@@ -953,11 +953,11 @@ withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibilit
             memory
             { computer
                 | secondsBeforeSend =
-                    if sendIntervalInSeconds < 1 then
-                        1
+                    if sendIntervalInSeconds < 0.1 then
+                        0.1
 
                     else
-                        toFloat sendIntervalInSeconds
+                        sendIntervalInSeconds
             }
         , memory.outbox
             |> List.map (postMessage server name)
