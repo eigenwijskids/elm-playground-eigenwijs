@@ -2,6 +2,7 @@ module Eigenwijs.Playground3d exposing
     ( picture, animation, game
     , Shape, circle, square, rectangle, triangle, polygon, snake
     , sphere, cylinder, cube, block
+    , words
     , move, moveX, moveY, moveZ
     , scale, rotate, roll, pitch, yaw, fade
     , group, extrude, pullUp
@@ -27,6 +28,21 @@ Playground, to add 3D elements to a 3D scene, and in this way enabling them to
 contribute to a collaboratively developed game.
 
 
+# Compatibility with the original Playground library
+
+This library exports the same functions and types except for (for the time being):
+
+  - oval, pentagon, hexagon, octagon (just some grunt work)
+  - image
+  - Color (Color is imported from the package avh4/elm-color)
+
+The following primitives work in a (slightly) different way:
+
+  - words (are rendered using a pixel font - actually Mogee from the kuzminadya/mogeefont package)
+  - move (takes an additional z-coordinate)
+  - Shape (also adds a z-coordinate, and has roll, pitch, yaw instead of only a single angle)
+
+
 # Playgrounds
 
 @docs picture, animation, game
@@ -40,6 +56,11 @@ contribute to a collaboratively developed game.
 # 3D Shapes
 
 @docs sphere, cylinder, cube, block
+
+
+# Words
+
+@docs words
 
 
 # Move Shapes
@@ -145,6 +166,7 @@ import Http
 import Json.Decode as D
 import Json.Encode as E
 import Length exposing (Length, Meters, centimeters, meters)
+import MogeeFont
 import Physics.Body as Body exposing (Body)
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
 import Physics.World as World exposing (World)
@@ -154,7 +176,7 @@ import Point3d exposing (Point3d)
 import Polyline3d
 import Quantity exposing (zero)
 import Scene3d exposing (Entity, group)
-import Scene3d.Material as Material exposing (Material)
+import Scene3d.Material as Material exposing (Material, Texture)
 import Scene3d.Mesh exposing (Mesh)
 import Set
 import SketchPlane3d
@@ -164,6 +186,7 @@ import Time
 import TriangularMesh
 import Vector3d
 import Viewpoint3d exposing (Viewpoint3d)
+import WebGL.Texture
 
 
 
@@ -201,15 +224,20 @@ picture shapes =
 {-| Picture model
 -}
 type alias Picture =
-    Screen
+    { screen : Screen
+    , font : Maybe Font
+    }
 
 
 {-| Picture init function
 -}
 pictureInit : () -> ( Picture, Cmd Msg )
 pictureInit () =
-    ( toScreen 600 600
-    , Task.perform GotViewport Dom.getViewport
+    ( Picture (toScreen 600 600) Nothing
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        ]
     )
 
 
@@ -226,12 +254,17 @@ pictureUpdate : Msg -> Picture -> ( Picture, Cmd Msg )
 pictureUpdate msg p =
     case msg of
         GotViewport { viewport } ->
-            ( toScreen viewport.width viewport.height
+            ( { p | screen = toScreen viewport.width viewport.height }
+            , Cmd.none
+            )
+
+        GotFont (Ok texture) ->
+            ( { p | font = Just texture }
             , Cmd.none
             )
 
         Resized w h ->
-            ( toScreen (toFloat w) (toFloat h)
+            ( { p | screen = toScreen (toFloat w) (toFloat h) }
             , Cmd.none
             )
 
@@ -714,7 +747,7 @@ animation viewFrame =
             , Cmd.none
             )
 
-        subscriptions (Animation visibility _ _) =
+        subscriptions (Animation visibility _ _ _) =
             case visibility of
                 E.Hidden ->
                     E.onVisibilityChange VisibilityChanged
@@ -733,25 +766,28 @@ animation viewFrame =
 {-| The type for animations.
 -}
 type Animation
-    = Animation E.Visibility Screen Time
+    = Animation E.Visibility (Maybe Font) Screen Time
 
 
 {-| Animation init
 -}
 animationInit : () -> ( Animation, Cmd Msg )
 animationInit () =
-    ( Animation E.Visible (toScreen 600 600) (Time (Time.millisToPosix 0))
-    , Task.perform GotViewport Dom.getViewport
+    ( Animation E.Visible Nothing (toScreen 600 600) (Time (Time.millisToPosix 0))
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        ]
     )
 
 
 {-| Animation view
 -}
 animationView : Animation -> (Time -> List Shape) -> Html.Html Msg
-animationView (Animation _ screen time) viewFrame =
+animationView (Animation _ font screen time) viewFrame =
     render
         isometric
-        screen
+        { screen = screen, font = font }
         (viewFrame time)
 
 
@@ -769,19 +805,25 @@ animationSubscriptions =
 {-| Animation update function
 -}
 animationUpdate : Msg -> Animation -> Animation
-animationUpdate msg ((Animation v s t) as state) =
+animationUpdate msg ((Animation v f s t) as state) =
     case msg of
         Tick posix ->
-            Animation v s (Time posix)
+            Animation v f s (Time posix)
 
         VisibilityChanged vis ->
-            Animation vis s t
+            Animation vis f s t
 
         GotViewport { viewport } ->
-            Animation v (toScreen viewport.width viewport.height) t
+            Animation v f (toScreen viewport.width viewport.height) t
+
+        GotFont (Ok texture) ->
+            Animation v (Just texture) s t
+
+        GotFont (Err _) ->
+            Animation v f s t
 
         Resized w h ->
-            Animation v (toScreen (toFloat w) (toFloat h)) t
+            Animation v f (toScreen (toFloat w) (toFloat h)) t
 
         KeyChanged _ _ ->
             state
@@ -947,9 +989,10 @@ networkGameWithCamera cam connection viewMemory updateMemory initialMemory =
 
 
 withCommandsFromMessages : Connection -> Game (WithMessages memory) -> ( Game (WithMessages memory), Cmd Msg )
-withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibility memory computer) =
+withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibility font memory computer) =
     if computer.secondsBeforeSend <= 0 then
         ( Game visibility
+            font
             memory
             { computer
                 | secondsBeforeSend =
@@ -965,7 +1008,7 @@ withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibilit
         )
 
     else
-        ( Game visibility memory { computer | secondsBeforeSend = computer.secondsBeforeSend - 1 / 60 }
+        ( Game visibility font memory { computer | secondsBeforeSend = computer.secondsBeforeSend - 1 / 60 }
         , Cmd.none
         )
 
@@ -1016,25 +1059,31 @@ initialComputer =
 -}
 gameInit : memory -> () -> ( Game memory, Cmd Msg )
 gameInit initialMemory () =
-    ( Game E.Visible initialMemory initialComputer
-    , Task.perform GotViewport Dom.getViewport
+    ( Game E.Visible Nothing initialMemory initialComputer
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        ]
     )
 
 
 networkGameInit : WithMessages memory -> () -> ( Game (WithMessages memory), Cmd Msg )
 networkGameInit initialMemory () =
-    ( Game E.Visible initialMemory initialComputer
-    , Task.perform GotViewport Dom.getViewport
+    ( Game E.Visible Nothing initialMemory initialComputer
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        ]
     )
 
 
 {-| Game view function
 -}
 gameView : (memory -> Camera) -> (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
-gameView cam viewMemory (Game _ memory computer) =
+gameView cam viewMemory (Game _ font memory computer) =
     render
         (cam memory)
-        computer.screen
+        { screen = computer.screen, font = font }
         (viewMemory computer memory)
 
 
@@ -1045,7 +1094,7 @@ gameView cam viewMemory (Game _ memory computer) =
 {-| Game subscriptions
 -}
 gameSubscriptions : Game memory -> Sub Msg
-gameSubscriptions (Game visibility _ _) =
+gameSubscriptions (Game visibility _ _ _) =
     case visibility of
         E.Hidden ->
             E.onVisibilityChange VisibilityChanged
@@ -1071,7 +1120,7 @@ gameSubscriptions (Game visibility _ _) =
 {-| Game model containing the visibility status, custom data (memory) and the Computer state record.
 -}
 type Game memory
-    = Game E.Visibility memory Computer
+    = Game E.Visibility (Maybe Font) memory Computer
 
 
 {-| Animation message alias
@@ -1136,15 +1185,16 @@ type Msg
     | MouseButton Bool
     | TouchMove Touch.Event
     | MessagesReceived (Result Http.Error (List Message))
+    | GotFont (Result WebGL.Texture.Error Font)
 
 
 {-| Game update function
 -}
 gameUpdate : (Computer -> memory -> memory) -> Msg -> Game memory -> Game memory
-gameUpdate updateMemory msg (Game vis memory computer) =
+gameUpdate updateMemory msg (Game vis font memory computer) =
     case msg of
         Tick time ->
-            Game vis (updateMemory computer memory) <|
+            Game vis font (updateMemory computer memory) <|
                 if computer.mouse.click then
                     { computer | time = Time time, mouse = mouseClick False computer.mouse }
 
@@ -1152,19 +1202,25 @@ gameUpdate updateMemory msg (Game vis memory computer) =
                     { computer | time = Time time }
 
         GotViewport { viewport } ->
-            Game vis memory { computer | screen = toScreen viewport.width viewport.height }
+            Game vis font memory { computer | screen = toScreen viewport.width viewport.height }
+
+        GotFont (Ok texture) ->
+            Game vis (Just texture) memory computer
+
+        GotFont (Err _) ->
+            Game vis font memory computer
 
         Resized w h ->
-            Game vis memory { computer | screen = toScreen (toFloat w) (toFloat h) }
+            Game vis font memory { computer | screen = toScreen (toFloat w) (toFloat h) }
 
         KeyChanged isDown key ->
-            Game vis memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+            Game vis font memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
 
         MessagesReceived (Ok messages) ->
-            Game vis memory { computer | inbox = messages }
+            Game vis font memory { computer | inbox = messages }
 
         MessagesReceived (Err _) ->
-            Game vis memory computer
+            Game vis font memory computer
 
         MouseMove pageX pageY ->
             let
@@ -1174,13 +1230,13 @@ gameUpdate updateMemory msg (Game vis memory computer) =
                 y =
                     computer.screen.top - pageY
             in
-            Game vis memory { computer | mouse = mouseMove x y computer.mouse }
+            Game vis font memory { computer | mouse = mouseMove x y computer.mouse }
 
         MouseClick ->
-            Game vis memory { computer | mouse = mouseClick True computer.mouse }
+            Game vis font memory { computer | mouse = mouseClick True computer.mouse }
 
         MouseButton isDown ->
-            Game vis memory { computer | mouse = mouseDown isDown computer.mouse }
+            Game vis font memory { computer | mouse = mouseDown isDown computer.mouse }
 
         TouchMove te ->
             let
@@ -1197,6 +1253,7 @@ gameUpdate updateMemory msg (Game vis memory computer) =
                     List.head positions
             in
             Game vis
+                font
                 memory
                 { computer
                     | touch =
@@ -1218,6 +1275,7 @@ gameUpdate updateMemory msg (Game vis memory computer) =
 
         VisibilityChanged visibility ->
             Game visibility
+                font
                 memory
                 { computer
                     | keyboard = emptyKeyboard
@@ -1226,10 +1284,10 @@ gameUpdate updateMemory msg (Game vis memory computer) =
 
 
 networkGameUpdate : (Computer -> WithMessages memory -> WithMessages memory) -> Msg -> Game (WithMessages memory) -> Game (WithMessages memory)
-networkGameUpdate updateMemory msg (Game vis memory computer) =
+networkGameUpdate updateMemory msg (Game vis font memory computer) =
     case msg of
         Tick time ->
-            Game vis (updateMemory computer memory) <|
+            Game vis font (updateMemory computer memory) <|
                 if computer.mouse.click then
                     { computer | time = Time time, mouse = mouseClick False computer.mouse }
 
@@ -1237,19 +1295,25 @@ networkGameUpdate updateMemory msg (Game vis memory computer) =
                     { computer | time = Time time }
 
         GotViewport { viewport } ->
-            Game vis memory { computer | screen = toScreen viewport.width viewport.height }
+            Game vis font memory { computer | screen = toScreen viewport.width viewport.height }
+
+        GotFont (Ok texture) ->
+            Game vis (Just texture) memory computer
+
+        GotFont (Err _) ->
+            Game vis font memory computer
 
         Resized w h ->
-            Game vis memory { computer | screen = toScreen (toFloat w) (toFloat h) }
+            Game vis font memory { computer | screen = toScreen (toFloat w) (toFloat h) }
 
         KeyChanged isDown key ->
-            Game vis memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+            Game vis font memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
 
         MessagesReceived (Ok messages) ->
-            Game vis memory { computer | inbox = messages }
+            Game vis font memory { computer | inbox = messages }
 
         MessagesReceived (Err _) ->
-            Game vis memory computer
+            Game vis font memory computer
 
         MouseMove pageX pageY ->
             let
@@ -1259,13 +1323,13 @@ networkGameUpdate updateMemory msg (Game vis memory computer) =
                 y =
                     computer.screen.top - pageY
             in
-            Game vis memory { computer | mouse = mouseMove x y computer.mouse }
+            Game vis font memory { computer | mouse = mouseMove x y computer.mouse }
 
         MouseClick ->
-            Game vis memory { computer | mouse = mouseClick True computer.mouse }
+            Game vis font memory { computer | mouse = mouseClick True computer.mouse }
 
         MouseButton isDown ->
-            Game vis memory { computer | mouse = mouseDown isDown computer.mouse }
+            Game vis font memory { computer | mouse = mouseDown isDown computer.mouse }
 
         TouchMove te ->
             let
@@ -1282,6 +1346,7 @@ networkGameUpdate updateMemory msg (Game vis memory computer) =
                     List.head positions
             in
             Game vis
+                font
                 memory
                 { computer
                     | touch =
@@ -1303,6 +1368,7 @@ networkGameUpdate updateMemory msg (Game vis memory computer) =
 
         VisibilityChanged visibility ->
             Game visibility
+                font
                 memory
                 { computer
                     | keyboard = emptyKeyboard
@@ -1446,6 +1512,11 @@ type Form
     | Block Color Number Number Number
     | Prism Color Number Number
     | Wall Color Number (List ( Number, Number, Number ))
+    | Words Color String
+
+
+type alias Font =
+    Texture Color
 
 
 
@@ -1730,6 +1801,23 @@ pullUp h shape =
 
         _ ->
             shape
+
+
+{-| Show some words!
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ words black "Hello! How are you?"
+            ]
+
+You can use [`scale`](#scale) to make the words bigger or smaller.
+
+-}
+words : Color -> String -> Shape
+words color string =
+    Shape 0 0 0 0 0 0 1 1 (Words color string)
 
 
 
@@ -2197,8 +2285,8 @@ type alias View =
     }
 
 
-render : Camera -> Screen -> List Shape -> Html.Html Msg
-render cam screen shapes =
+render : Camera -> { screen : Screen, font : Maybe Font } -> List Shape -> Html.Html Msg
+render cam { screen, font } shapes =
     Html.div
         [ Touch.onMove TouchMove
         ]
@@ -2210,7 +2298,13 @@ render cam screen shapes =
                 , Pixels.int (round screen.height)
                 )
             , background = Scene3d.transparentBackground
-            , entities = List.map entity shapes
+            , entities =
+                case font of
+                    Nothing ->
+                        []
+
+                    Just f ->
+                        List.map (entity f) shapes
             , shadows = False
             , upDirection = Direction3d.y
             , sunlightDirection = Direction3d.yz (Angle.degrees -120)
@@ -2270,17 +2364,17 @@ material color roughness =
 
 {-| Add a 3D shape to a Scene3D scene as an entity.
 -}
-entity : Shape -> Entity coordinates
-entity (Shape x y z rr rp ry s alpha form) =
-    renderForm form
+entity : Font -> Shape -> Entity coordinates
+entity font (Shape x y z rr rp ry s alpha form) =
+    renderForm font form
         |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
 
 
-renderForm : Form -> Entity coordinates
-renderForm form =
+renderForm : Font -> Form -> Entity coordinates
+renderForm font form =
     case form of
         Group shapes ->
-            renderGroup shapes
+            renderGroup font shapes
 
         Circle color radius ->
             renderCircle color radius
@@ -2318,6 +2412,9 @@ renderForm form =
         Wall color height points ->
             renderWall color height points
 
+        Words color string ->
+            renderWords font color string
+
 
 
 --ExtrudedPolygon color height points ->
@@ -2325,10 +2422,10 @@ renderForm form =
 -- RENDER GROUP
 
 
-renderGroup : List Shape -> Entity coordinates
-renderGroup shapes =
+renderGroup : Font -> List Shape -> Entity coordinates
+renderGroup font shapes =
     shapes
-        |> List.map entity
+        |> List.map (entity font)
         |> Scene3d.group
 
 
@@ -2521,6 +2618,43 @@ renderWall color height points =
         )
         |> Scene3d.Mesh.indexedFacets
         |> withColor color
+
+
+
+-- RENDER WORDS
+
+
+renderWords : Font -> Color -> String -> Entity coordinates
+renderWords font color text =
+    Scene3d.Mesh.texturedFacets (mesh text)
+        |> Scene3d.mesh (Material.texturedColor font)
+
+
+mesh =
+    MogeeFont.text addLetter >> TriangularMesh.triangles
+
+
+type alias Vertex a =
+    { position : Point3d Meters a
+    , uv : ( Float, Float )
+    }
+
+
+addLetter : MogeeFont.Letter -> List ( Vertex a, Vertex a, Vertex a )
+addLetter { x, y, width, height, textureX, textureY } =
+    let
+        tscale ( tx, ty ) =
+            ( tx / 128, 1 - ty / 128 )
+    in
+    [ ( { position = Point3d.centimeters x y 0, uv = tscale ( textureX, textureY + height ) }
+      , { position = Point3d.centimeters (x + width) (y + height) 0, uv = tscale ( textureX + width, textureY ) }
+      , { position = Point3d.centimeters (x + width) y 0, uv = tscale ( textureX + width, textureY + height ) }
+      )
+    , ( { position = Point3d.centimeters x y 0, uv = tscale ( textureX, textureY + height ) }
+      , { position = Point3d.centimeters x (y + height) 0, uv = tscale ( textureX, textureY ) }
+      , { position = Point3d.centimeters (x + width) (y + height) 0, uv = tscale ( textureX + width, textureY ) }
+      )
+    ]
 
 
 
