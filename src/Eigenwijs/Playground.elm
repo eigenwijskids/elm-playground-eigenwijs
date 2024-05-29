@@ -1,7 +1,7 @@
 module Eigenwijs.Playground exposing
     ( picture, animation, game
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
-    , words
+    , words, withFont
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY
     , scale, scaleX, scaleY, rotate, fade
@@ -17,7 +17,7 @@ module Eigenwijs.Playground exposing
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture, PictureMsg
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    , center, collidesWith, distanceTo, extent
+    , center, extent, distanceTo, collidesWith
     )
 
 {-|
@@ -35,7 +35,7 @@ module Eigenwijs.Playground exposing
 
 # Words
 
-@docs words
+@docs words, withFont
 
 
 # Images
@@ -111,6 +111,11 @@ module Eigenwijs.Playground exposing
 # Playground Game embeds
 
 @docs gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+
+
+# Calculations
+
+@docs center, extent, distanceTo, collidesWith
 
 -}
 
@@ -1512,7 +1517,16 @@ fade o (Shape x y a sx sy _ f) =
     Shape x y a sx sy o f
 
 
-{-| Change the font used for the words within shapes.
+{-| Change the font used for the words within shapes:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ words black "Hello world"
+                |> withFont "sans-serif"
+            ]
+
 -}
 withFont : String -> Shape -> Shape
 withFont fontname ((Shape x y a sx sy o f) as shape) =
@@ -1775,6 +1789,105 @@ rgb r g b =
 colorClamp : Number -> Int
 colorClamp number =
     clamp 0 255 (round number)
+
+
+
+-- COLLISIONS
+
+
+{-| Indicates whether two (groups of) shapes collide (BEWARE: the calculations
+currently are only accurate for a circle colliding with an other circle, to be
+continued..).
+-}
+collidesWith : Shape -> Shape -> Bool
+collidesWith shape2 shape1 =
+    (shape1 |> distanceTo shape2) <= 0
+
+
+{-| Calculates the distance between two shapes, taking their sizes into account:
+
+    shape1 =
+        circle red 50
+
+    shape2 =
+        circle red 20
+            |> move 100 40
+
+    distanceToCollision =
+        shape2
+            |> distanceTo shape1
+
+-}
+distanceTo : Shape -> Shape -> Number
+distanceTo shape2 shape1 =
+    let
+        ( cx1, cy1 ) =
+            center shape1
+
+        ( cx2, cy2 ) =
+            center shape2
+
+        -- potential contact point c1 + df(angle(c1->c2))*(c1->c2)
+        -- potential contact point c2 + df(angle(c2->c1))*(c2->c1)
+        -- simplification: circles
+        e1 =
+            extent shape1
+
+        -- TODO: needs to take angle and radially parametrized distance to edge function
+        e2 =
+            extent shape2
+    in
+    sqrt ((cx2 - cx1) ^ 2 + (cy2 - cy1) ^ 2) - e1 - e2
+
+
+{-| Extracts the position from any shape.
+-}
+center : Shape -> ( Number, Number )
+center (Shape x y _ _ _ _ _) =
+    ( x, y )
+
+
+{-| Calculates (the currently very crude approximation of) the extent (size) of any (group of) shape(s).
+-}
+extent : Shape -> Number
+extent (Shape _ _ _ _ _ _ form) =
+    case form of
+        Circle _ size ->
+            size
+
+        Oval _ s1 s2 ->
+            -- This is only a very crude approximation
+            (s1 + s2) / 2
+
+        Rectangle _ s1 s2 ->
+            -- This is only a very crude approximation
+            (s1 + s2) / 4
+
+        Ngon _ _ size ->
+            size
+
+        Polygon _ points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( Basics.min x minx1, Basics.min y miny1 )
+                            , ( Basics.max x maxx1, Basics.max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            ((maxx - minx) + (maxy - miny)) / 2
+
+        Image s1 s2 _ ->
+            (s1 + s2) / 2
+
+        Words _ _ _ ->
+            0
+
+        Group shapes ->
+            List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
 
 
 
@@ -2049,80 +2162,3 @@ renderTransform x y a sx sy =
 
     else
         "translate(" ++ String.fromFloat x ++ "," ++ String.fromFloat -y ++ ") rotate(" ++ String.fromFloat -a ++ ") scale(" ++ String.fromFloat sx ++ ", " ++ String.fromFloat sy ++ ")"
-
-
-
--- COLLISIONS
-
-
-collidesWith : Shape -> Shape -> Bool
-collidesWith shape2 shape1 =
-    (shape1 |> distanceTo shape2) <= 0
-
-
-distanceTo : Shape -> Shape -> Number
-distanceTo shape2 shape1 =
-    let
-        ( cx1, cy1 ) =
-            center shape1
-
-        ( cx2, cy2 ) =
-            center shape2
-
-        -- potential contact point c1 + df(angle(c1->c2))*(c1->c2)
-        -- potential contact point c2 + df(angle(c2->c1))*(c2->c1)
-        -- simplification: circles
-        e1 =
-            extent shape1
-
-        -- TODO: needs to take angle and radially parametrized distance to edge function
-        e2 =
-            extent shape2
-    in
-    sqrt ((cx2 - cx1) ^ 2 + (cy2 - cy1) ^ 2) - e1 - e2
-
-
-center : Shape -> ( Number, Number )
-center (Shape x y _ _ _ _ _) =
-    ( x, y )
-
-
-extent : Shape -> Number
-extent (Shape _ _ _ _ _ _ form) =
-    case form of
-        Circle _ size ->
-            size
-
-        Oval _ s1 s2 ->
-            -- This is only a very crude approximation
-            (s1 + s2) / 2
-
-        Rectangle _ s1 s2 ->
-            -- This is only a very crude approximation
-            (s1 + s2) / 4
-
-        Ngon _ _ size ->
-            size
-
-        Polygon _ points ->
-            let
-                ( ( minx, miny ), ( maxx, maxy ) ) =
-                    List.foldl
-                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
-                            ( ( Basics.min x minx1, Basics.min y miny1 )
-                            , ( Basics.max x maxx1, Basics.max y maxy1 )
-                            )
-                        )
-                        ( ( 0, 0 ), ( 0, 0 ) )
-                        points
-            in
-            ((maxx - minx) + (maxy - miny)) / 2
-
-        Image s1 s2 _ ->
-            (s1 + s2) / 2
-
-        Words _ _ _ ->
-            0
-
-        Group shapes ->
-            List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
