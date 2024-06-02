@@ -3,7 +3,7 @@ module Eigenwijs.Playground exposing
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
     , words, withFont
     , image
-    , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY
+    , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong
     , scale, scaleX, scaleY, rotate, fade
     , group
     , Time, spin, wave, zigzag, beginOfTime
@@ -45,7 +45,7 @@ module Eigenwijs.Playground exposing
 
 # Move Shapes
 
-@docs move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY
+@docs move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong
 
 
 # Customize Shapes
@@ -1422,6 +1422,52 @@ top of the screen, since the values are negative sometimes.
 moveY : Number -> Shape -> Shape
 moveY dy (Shape x y a sx sy o f) =
     Shape x (y + dy) a sx sy o f
+
+
+{-| Move a shape along a path, specified by a list of coordinate-pairs,
+and a number between 0 and 1, where 0 corresponds with the start of the
+path and 1 indicates arriving at the end, the last coordinate in the list.
+So in the example below, the circle is moved halfway on the path:
+
+    circle red 50
+        |> moveAlong [ ( 100, 0 ), ( 200, 200 ), ( 400, 200 ) ] 0.5
+
+-}
+moveAlong : List ( Number, Number ) -> Number -> Shape -> Shape
+moveAlong path amount ((Shape x y a sx sy o f) as shape) =
+    let
+        ( totalLength, _ ) =
+            path
+                |> List.foldl
+                    (\( x2, y2 ) ( length, ( x1, y1 ) ) ->
+                        ( length + sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2), ( x2, y2 ) )
+                    )
+                    ( 0, ( x, y ) )
+
+        ( ( nx, ny ), _ ) =
+            path
+                |> List.foldl
+                    (\( x2, y2 ) ( ( x1, y1 ), amountLeft ) ->
+                        if amountLeft < 0 then
+                            ( ( x1, y1 ), 0 )
+
+                        else
+                            let
+                                length =
+                                    sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+
+                                factor =
+                                    if length == 0 then
+                                        0
+
+                                    else
+                                        Basics.min amountLeft length / length
+                            in
+                            ( ( x1 + (x2 - x1) * factor, y1 + (y2 - y1) * factor ), amountLeft - length )
+                    )
+                    ( ( x, y ), amount * totalLength )
+    in
+    Shape nx ny a sx sy o f
 
 
 {-| Make a shape bigger or smaller. So if you wanted some [`words`](#words) to
