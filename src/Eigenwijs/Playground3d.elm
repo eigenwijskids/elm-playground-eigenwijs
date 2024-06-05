@@ -18,7 +18,7 @@ module Eigenwijs.Playground3d exposing
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    , networkGame, Connection
+    , networkGame, networkGameWithCamera, Connection
     , isometric, eyesAt, lookAt
     )
 
@@ -136,7 +136,7 @@ The following primitives work in a (slightly) different way:
 # Playground Game embeds
 
 @docs gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-@docs networkGame, Connection
+@docs networkGame, networkGameWithCamera, Connection
 
 
 # Playground Cameras
