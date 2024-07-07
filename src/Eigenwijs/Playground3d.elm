@@ -20,6 +20,7 @@ module Eigenwijs.Playground3d exposing
     , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
     , networkGame, networkGameWithCamera, Connection
     , isometric, eyesAt, lookAt
+    , center, extent, extents
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -142,6 +143,11 @@ The following primitives work in a (slightly) different way:
 # Playground Cameras
 
 @docs isometric, eyesAt, lookAt
+
+
+# Calculations
+
+@docs center, extent, extents
 
 -}
 
@@ -2272,6 +2278,192 @@ rgb r g b =
 colorClamp : Number -> Int
 colorClamp number =
     clamp 0 255 (round number)
+
+
+
+-- CALCULATIONS
+
+
+{-| Extracts the position from any shape.
+-}
+center : Shape -> ( Number, Number, Number )
+center (Shape x y z _ _ _ _ _ _) =
+    ( x, y, z )
+
+
+{-| Calculates the extent from origin (radius) of a sphere that roughly circumscribes the (group of) shape(s).
+TODO: Needs a refactor where offset centers are taken into account within a group.
+-}
+extent : Shape -> Number
+extent (Shape _ _ _ _ _ _ _ _ form) =
+    case form of
+        Circle _ size ->
+            size
+
+        Triangle _ size ->
+            size
+
+        Square _ size ->
+            size / 2
+
+        Rectangle _ s1 s2 ->
+            max s1 s2 / 2
+
+        Polygon _ points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            max (maxx - minx) (maxy - miny) / 2
+
+        Snake _ points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            max (maxx - minx) (max (maxy - miny) (maxz - minz)) / 2
+
+        Sphere _ size ->
+            size
+
+        Cylinder _ radius height ->
+            max radius (height / 2)
+
+        Cube _ size ->
+            size / 2
+
+        Block _ w h d ->
+            max w (max h d) / 2
+
+        Prism _ size height ->
+            max size height / 2
+
+        Wall _ height points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            max height (max (maxx - minx) (max (maxy - miny) (maxz - minz))) / 2
+
+        Words _ _ ->
+            0
+
+        Group shapes ->
+            List.foldl (\s e -> max e (extent s)) 0 shapes
+
+
+{-| Calculates the extents per axis of any (group of) shape(s). Extent in this case
+means from the center of the object to its edge (a "radius"), so it can directly
+be used in calculations from the origin of the objects.
+-}
+extents : Shape -> ( Number, Number, Number )
+extents (Shape _ _ _ _ _ _ _ _ form) =
+    case form of
+        Circle _ size ->
+            ( size, size, 0 )
+
+        Triangle _ size ->
+            ( size, size, 0 )
+
+        Square _ size ->
+            ( size / 2, size / 2, 0 )
+
+        Rectangle _ s1 s2 ->
+            -- This is only a very crude approximation
+            ( s1 / 2, s2 / 2, 0 )
+
+        Polygon _ points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, 0 )
+
+        Snake _ points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, (maxz - minz) / 2 )
+
+        Sphere _ size ->
+            ( size, size, size )
+
+        Cylinder _ radius height ->
+            ( radius, radius, height / 2 )
+
+        Cube _ size ->
+            ( size / 2, size / 2, size / 2 )
+
+        Block _ w h d ->
+            ( w / 2, h / 2, d / 2 )
+
+        Prism _ radius height ->
+            ( radius, radius, height / 2 )
+
+        Wall _ height points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max (z + height) maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, (maxz - minz) / 2 )
+
+        Words _ _ ->
+            ( 0, 0, 0 )
+
+        Group shapes ->
+            List.foldl
+                (\s ( ex, ey, ez ) ->
+                    let
+                        ( sx, sy, sz ) =
+                            extents s
+                    in
+                    ( max ex sx, max ey sy, max ez sz )
+                )
+                ( 0, 0, 0 )
+                shapes
 
 
 
