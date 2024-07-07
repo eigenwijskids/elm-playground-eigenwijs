@@ -2304,7 +2304,7 @@ render cam { screen, font } shapes =
                         []
 
                     Just f ->
-                        List.map (entity f) shapes
+                        List.map (entityWithFont f) shapes
             , shadows = False
             , upDirection = Direction3d.y
             , sunlightDirection = Direction3d.yz (Angle.degrees -120)
@@ -2364,13 +2364,19 @@ material color roughness =
 
 {-| Add a 3D shape to a Scene3D scene as an entity.
 -}
-entity : Font -> Shape -> Entity coordinates
-entity font (Shape x y z rr rp ry s alpha form) =
-    renderForm font form
+entity : Shape -> Entity coordinates
+entity (Shape x y z rr rp ry s alpha form) =
+    renderForm Nothing form
         |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
 
 
-renderForm : Font -> Form -> Entity coordinates
+entityWithFont : Font -> Shape -> Entity coordinates
+entityWithFont font (Shape x y z rr rp ry s alpha form) =
+    renderForm (Just font) form
+        |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
+
+
+renderForm : Maybe Font -> Form -> Entity coordinates
 renderForm font form =
     case form of
         Group shapes ->
@@ -2413,7 +2419,12 @@ renderForm font form =
             renderWall color height points
 
         Words color string ->
-            renderWords font color string
+            case font of
+                Nothing ->
+                    renderGroup Nothing []
+
+                Just f ->
+                    renderWords f color string
 
 
 
@@ -2422,11 +2433,18 @@ renderForm font form =
 -- RENDER GROUP
 
 
-renderGroup : Font -> List Shape -> Entity coordinates
+renderGroup : Maybe Font -> List Shape -> Entity coordinates
 renderGroup font shapes =
-    shapes
-        |> List.map (entity font)
-        |> Scene3d.group
+    case font of
+        Nothing ->
+            shapes
+                |> List.map entity
+                |> Scene3d.group
+
+        Just f ->
+            shapes
+                |> List.map (entityWithFont f)
+                |> Scene3d.group
 
 
 
