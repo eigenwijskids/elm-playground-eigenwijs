@@ -1889,8 +1889,31 @@ distanceTo shape2 shape1 =
 {-| Extracts the position from any shape.
 -}
 center : Shape -> ( Number, Number )
-center (Shape x y _ _ _ _ _) =
-    ( x, y )
+center (Shape x y _ _ _ _ shape) =
+    case shape of
+        Group [] ->
+            ( x, y )
+
+        Group shapes ->
+            let
+                count =
+                    List.length shapes
+                        |> toFloat
+            in
+            shapes
+                |> List.foldl
+                    (\s ( sumx, sumy ) ->
+                        let
+                            ( sx, sy ) =
+                                center s
+                        in
+                        ( sumx + sx, sumy + sy )
+                    )
+                    ( 0, 0 )
+                |> (\( sumx, sumy ) -> ( sumx / count, sumy / count ))
+
+        _ ->
+            ( x, y )
 
 
 {-| Calculates (the currently very crude approximation of) the extent (size) of any (group of) shape(s).
