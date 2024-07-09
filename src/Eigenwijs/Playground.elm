@@ -1910,7 +1910,7 @@ center (Shape x y _ _ _ _ shape) =
                         ( sumx + sx, sumy + sy )
                     )
                     ( 0, 0 )
-                |> (\( sumx, sumy ) -> ( sumx / count, sumy / count ))
+                |> (\( sumx, sumy ) -> ( x + (sumx / count), y + (sumy / count) ))
 
         _ ->
             ( x, y )
