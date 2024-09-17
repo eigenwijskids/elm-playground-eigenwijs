@@ -5,6 +5,7 @@ module Eigenwijs.Playground exposing
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong
     , scale, scaleX, scaleY, rotate, fade
+    , withName, clickedName
     , group
     , Time, spin, wave, zigzag, beginOfTime
     , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
@@ -18,8 +19,6 @@ module Eigenwijs.Playground exposing
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
     , center, extent, distanceTo, collidesWith
-    , withClickAction
-    , gameWithActions
     )
 
 {-|
@@ -53,6 +52,11 @@ module Eigenwijs.Playground exposing
 # Customize Shapes
 
 @docs scale, scaleX, scaleY, rotate, fade
+
+
+# Named Shapes
+
+@docs withName, clickedName
 
 
 # Groups
@@ -119,11 +123,6 @@ module Eigenwijs.Playground exposing
 
 @docs center, extent, distanceTo, collidesWith
 
-
-# Interaction
-
-@docs withClickAction
-
 -}
 
 import Browser
@@ -156,7 +155,7 @@ import Time
             ]
 
 -}
-picture : List Shape -> Program () Picture PictureMsg
+picture : List (Shape PictureMsg) -> Program () Picture PictureMsg
 picture shapes =
     let
         view screen =
@@ -193,7 +192,7 @@ pictureInit () =
 
 {-| Picture view function
 -}
-pictureView : Picture -> List Shape -> Html.Html PictureMsg
+pictureView : Picture -> List (Shape PictureMsg) -> Html.Html PictureMsg
 pictureView =
     render
 
@@ -261,7 +260,8 @@ You could draw a circle around the mouse with a program like this:
         memory
 
 You could also use `computer.mouse.down` to change the color of the circle
-while the mouse button is down.
+while the mouse button is down, or ask for `computer.mouse.clickedNames`
+to see which named shapes are clicked.
 
 -}
 type alias Mouse =
@@ -269,6 +269,7 @@ type alias Mouse =
     , y : Number
     , down : Bool
     , click : Bool
+    , clickedNames : List String
     }
 
 
@@ -620,7 +621,7 @@ Within `view` we can use functions like [`spin`](#spin), [`wave`](#wave),
 and [`zigzag`](#zigzag) to move and rotate our shapes.
 
 -}
-animation : (Time -> List Shape) -> Program () Animation Msg
+animation : (Time -> List (Shape Msg)) -> Program () Animation Msg
 animation viewFrame =
     let
         view a =
@@ -666,7 +667,7 @@ animationInit () =
 
 {-| Animation view
 -}
-animationView : Animation -> (Time -> List Shape) -> Html.Html Msg
+animationView : Animation -> (Time -> List (Shape Msg)) -> Html.Html Msg
 animationView (Animation _ screen time) viewFrame =
     render screen (viewFrame time)
 
@@ -711,7 +712,7 @@ animationUpdate msg ((Animation v s t) as state) =
         MouseButton _ ->
             state
 
-        ClickedShapeWithAction _ ->
+        ClickedName _ ->
             state
 
 
@@ -774,29 +775,8 @@ Notice that in the `update` we use information from the keyboard to update the
 `x` and `y` values. These building blocks let you make pretty fancy games!
 
 -}
-game : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+game : (Computer -> memory -> List (Shape Msg)) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
 game viewMemory updateMemory initialMemory =
-    let
-        view model =
-            { title = "Playground"
-            , body = [ gameView viewMemory model ]
-            }
-
-        update msg model =
-            ( gameUpdate updateMemory msg model
-            , Cmd.none
-            )
-    in
-    Browser.document
-        { init = gameInit initialMemory
-        , view = view
-        , update = update
-        , subscriptions = gameSubscriptions
-        }
-
-
-gameWithActions : (Computer -> memory -> List Shape) -> (action -> Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
-gameWithActions viewMemory updateMemory initialMemory =
     let
         view model =
             { title = "Playground"
@@ -818,7 +798,7 @@ gameWithActions viewMemory updateMemory initialMemory =
 
 initialComputer : Computer
 initialComputer =
-    { mouse = Mouse 0 0 False False
+    { mouse = Mouse 0 0 False False []
     , keyboard = emptyKeyboard
     , screen = toScreen 600 600
     , time = beginOfTime
@@ -836,7 +816,7 @@ gameInit initialMemory () =
 
 {-| Game view function
 -}
-gameView : (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
+gameView : (Computer -> memory -> List (Shape Msg)) -> Game memory -> Html.Html Msg
 gameView viewMemory (Game _ memory computer) =
     render computer.screen (viewMemory computer memory)
 
@@ -880,22 +860,18 @@ type Game memory
 {-| Animation message alias
 -}
 type alias AnimationMsg =
-    Msg Action
+    Msg
 
 
 {-| Game message alias
 -}
 type alias GameMsg =
-    Msg Action
-
-
-type Action
-    = NoAction
+    Msg
 
 
 {-| Playground message type
 -}
-type Msg action
+type Msg
     = KeyChanged Bool String
     | Tick Time.Posix
     | GotViewport Dom.Viewport
@@ -904,16 +880,16 @@ type Msg action
     | MouseMove Float Float
     | MouseClick
     | MouseButton Bool
-    | ClickedShapeWithAction action
+    | ClickedName String
 
 
 {-| Game update function
 -}
-gameUpdate : (Maybe action -> Computer -> memory -> memory) -> Msg action -> Game memory -> Game memory
+gameUpdate : (Computer -> memory -> memory) -> Msg -> Game memory -> Game memory
 gameUpdate updateMemory msg (Game vis memory computer) =
     case msg of
         Tick time ->
-            Game vis (updateMemory Nothing computer memory) <|
+            Game vis (updateMemory computer memory) <|
                 if computer.mouse.click then
                     { computer | time = Time time, mouse = mouseClick False computer.mouse }
 
@@ -950,15 +926,19 @@ gameUpdate updateMemory msg (Game vis memory computer) =
                 memory
                 { computer
                     | keyboard = emptyKeyboard
-                    , mouse = Mouse computer.mouse.x computer.mouse.y False False
+                    , mouse = Mouse computer.mouse.x computer.mouse.y False False []
                 }
 
-        ClickedShapeWithAction action ->
+        ClickedName n ->
+            let
+                mouse =
+                    computer.mouse
+            in
             Game vis
-                updateMemory(memory
+                memory
                 { computer
                     | keyboard = emptyKeyboard
-                    , mouse = Mouse computer.mouse.x computer.mouse.y False False
+                    , mouse = { mouse | clickedNames = n :: mouse.clickedNames }
                 }
 
 
@@ -983,7 +963,11 @@ toScreen width height =
 
 mouseClick : Bool -> Mouse -> Mouse
 mouseClick bool mouse =
-    { mouse | click = bool }
+    if bool then
+        { mouse | click = True }
+
+    else
+        { mouse | click = False, clickedNames = [] }
 
 
 mouseDown : Bool -> Mouse -> Mouse
@@ -1063,7 +1047,7 @@ Read on to see examples of [`circle`](#circle), [`rectangle`](#rectangle),
 [`words`](#words), [`image`](#image), and many more!
 
 -}
-type Shape
+type Shape msg
     = Shape
         Number
         -- x
@@ -1077,12 +1061,12 @@ type Shape
         -- scale height
         Number
         -- alpha
-        (Maybe String)
-        -- name (to make the shape clickable and identifiable)
-        Form
+        (Maybe msg)
+        -- message to send on click (to make the shape clickable and identifiable)
+        (Form msg)
 
 
-type Form
+type Form msg
     = Circle Color Number
     | Oval Color Number Number
     | Rectangle Color Number Number
@@ -1090,7 +1074,7 @@ type Form
     | Polygon Color (List ( Number, Number ))
     | Image Number Number String
     | Words Color Font String
-    | Group (List Shape)
+    | Group (List (Shape msg))
 
 
 type alias Font =
@@ -1109,7 +1093,7 @@ You give a color and then the radius. So the higher the number, the larger
 the circle.
 
 -}
-circle : Color -> Number -> Shape
+circle : Color -> Number -> Shape msg
 circle color radius =
     Shape 0 0 0 1 1 1 Nothing (Circle color radius)
 
@@ -1123,7 +1107,7 @@ You give the color, and then the width and height. So our `football` example
 is 200 pixels wide and 100 pixels tall.
 
 -}
-oval : Color -> Number -> Number -> Shape
+oval : Color -> Number -> Number -> Shape msg
 oval color width height =
     Shape 0 0 0 1 1 1 Nothing (Oval color width height)
 
@@ -1142,7 +1126,7 @@ The number you give is the dimension of each side. So that purple square would
 be 80 pixels by 80 pixels.
 
 -}
-square : Color -> Number -> Shape
+square : Color -> Number -> Shape msg
 square color n =
     Shape 0 0 0 1 1 1 Nothing (Rectangle color n n)
 
@@ -1161,7 +1145,7 @@ You give the color, width, and then height. So the first shape is vertical
 part of the cross, the thinner and taller part.
 
 -}
-rectangle : Color -> Number -> Number -> Shape
+rectangle : Color -> Number -> Number -> Shape msg
 rectangle color width height =
     Shape 0 0 0 1 1 1 Nothing (Rectangle color width height)
 
@@ -1180,7 +1164,7 @@ The number is the "radius", so the distance from the center to each point of
 the pyramid is `200`. Pretty big!
 
 -}
-triangle : Color -> Number -> Shape
+triangle : Color -> Number -> Shape msg
 triangle color radius =
     Shape 0 0 0 1 1 1 Nothing (Ngon color 3 radius)
 
@@ -1198,7 +1182,7 @@ You give the color and then the radius. So the distance from the center to each
 of the five points is 100 pixels.
 
 -}
-pentagon : Color -> Number -> Shape
+pentagon : Color -> Number -> Shape msg
 pentagon color radius =
     Shape 0 0 0 1 1 1 Nothing (Ngon color 5 radius)
 
@@ -1218,7 +1202,7 @@ If you made more hexagons, you could [`move`](#move) them around to make a
 honeycomb pattern!
 
 -}
-hexagon : Color -> Number -> Shape
+hexagon : Color -> Number -> Shape msg
 hexagon color radius =
     Shape 0 0 0 1 1 1 Nothing (Ngon color 6 radius)
 
@@ -1236,7 +1220,7 @@ You give the color and radius, so each point of this stop sign is 100 pixels
 from the center.
 
 -}
-octagon : Color -> Number -> Shape
+octagon : Color -> Number -> Shape msg
 octagon color radius =
     Shape 0 0 0 1 1 1 Nothing (Ngon color 8 radius)
 
@@ -1255,7 +1239,7 @@ octagon color radius =
 [`move`](#move) or [`group`](#group) so that rotation makes more sense.
 
 -}
-polygon : Color -> List ( Number, Number ) -> Shape
+polygon : Color -> List ( Number, Number ) -> Shape msg
 polygon color points =
     Shape 0 0 0 1 1 1 Nothing (Polygon color points)
 
@@ -1272,7 +1256,7 @@ polygon color points =
 You provide the width, height, and then the URL of the image you want to show.
 
 -}
-image : Number -> Number -> String -> Shape
+image : Number -> Number -> String -> Shape msg
 image w h src =
     Shape 0 0 0 1 1 1 Nothing (Image w h src)
 
@@ -1289,7 +1273,7 @@ image w h src =
 You can use [`scale`](#scale) to make the words bigger or smaller.
 
 -}
-words : Color -> String -> Shape
+words : Color -> String -> Shape msg
 words color string =
     Shape 0 0 0 1 1 1 Nothing (Words color Nothing string)
 
@@ -1323,7 +1307,7 @@ them as a group. Maybe you want to put a bunch of stars in the sky:
             ]
 
 -}
-group : List Shape -> Shape
+group : List (Shape msg) -> Shape msg
 group shapes =
     Shape 0 0 0 1 1 1 Nothing (Group shapes)
 
@@ -1349,7 +1333,7 @@ group shapes =
             ]
 
 -}
-move : Number -> Number -> Shape -> Shape
+move : Number -> Number -> Shape msg -> Shape msg
 move dx dy (Shape x y a sx sy o n f) =
     Shape (x + dx) (y + dy) a sx sy o n f
 
@@ -1367,7 +1351,7 @@ you could move the leaves up above the trunk:
             ]
 
 -}
-moveUp : Number -> Shape -> Shape
+moveUp : Number -> Shape msg -> Shape msg
 moveUp =
     moveY
 
@@ -1386,7 +1370,7 @@ above the ground, you could move the sky up and the ground down:
             ]
 
 -}
-moveDown : Number -> Shape -> Shape
+moveDown : Number -> Shape msg -> Shape msg
 moveDown dy (Shape x y a sx sy o n f) =
     Shape x (y - dy) a sx sy o n f
 
@@ -1403,7 +1387,7 @@ moveDown dy (Shape x y a sx sy o n f) =
             ]
 
 -}
-moveLeft : Number -> Shape -> Shape
+moveLeft : Number -> Shape msg -> Shape msg
 moveLeft dx (Shape x y a sx sy o n f) =
     Shape (x - dx) y a sx sy o n f
 
@@ -1420,7 +1404,7 @@ moveLeft dx (Shape x y a sx sy o n f) =
             ]
 
 -}
-moveRight : Number -> Shape -> Shape
+moveRight : Number -> Shape msg -> Shape msg
 moveRight =
     moveX
 
@@ -1441,7 +1425,7 @@ moves back and forth:
 Using `moveX` feels a bit nicer here because the movement may be positive or negative.
 
 -}
-moveX : Number -> Shape -> Shape
+moveX : Number -> Shape msg -> Shape msg
 moveX dx (Shape x y a sx sy o n f) =
     Shape (x + dx) y a sx sy o n f
 
@@ -1466,7 +1450,7 @@ Using `moveY` feels a bit nicer when setting things relative to the bottom or
 top of the screen, since the values are negative sometimes.
 
 -}
-moveY : Number -> Shape -> Shape
+moveY : Number -> Shape msg -> Shape msg
 moveY dy (Shape x y a sx sy o n f) =
     Shape x (y + dy) a sx sy o n f
 
@@ -1480,7 +1464,7 @@ So in the example below, the circle is moved halfway on the path:
         |> moveAlong [ ( 100, 0 ), ( 200, 200 ), ( 400, 200 ) ] 0.5
 
 -}
-moveAlong : List ( Number, Number ) -> Number -> Shape -> Shape
+moveAlong : List ( Number, Number ) -> Number -> Shape msg -> Shape msg
 moveAlong path amount ((Shape x y a sx sy o n f) as shape) =
     let
         ( totalLength, _ ) =
@@ -1529,7 +1513,7 @@ be larger, you could say:
             ]
 
 -}
-scale : Number -> Shape -> Shape
+scale : Number -> Shape msg -> Shape msg
 scale ns (Shape x y a sx sy o n f) =
     Shape x y a (sx * ns) (sy * ns) o n f
 
@@ -1546,7 +1530,7 @@ be wider, you could say:
             ]
 
 -}
-scaleX : Number -> Shape -> Shape
+scaleX : Number -> Shape msg -> Shape msg
 scaleX ns (Shape x y a sx sy o n f) =
     Shape x y a (sx * ns) sy o n f
 
@@ -1563,7 +1547,7 @@ be taller, you could say:
             ]
 
 -}
-scaleY : Number -> Shape -> Shape
+scaleY : Number -> Shape msg -> Shape msg
 scaleY ns (Shape x y a sx sy o n f) =
     Shape x y a sx (sy * ns) o n f
 
@@ -1582,7 +1566,7 @@ The degrees go **counter-clockwise** to match the direction of the
 [unit circle](https://en.wikipedia.org/wiki/Unit_circle).
 
 -}
-rotate : Number -> Shape -> Shape
+rotate : Number -> Shape msg -> Shape msg
 rotate da (Shape x y a sx sy o n f) =
     Shape x y (a + da) sx sy o n f
 
@@ -1605,9 +1589,45 @@ The number has to be between `0` and `1`, where `0` is totally transparent
 and `1` is completely solid.
 
 -}
-fade : Number -> Shape -> Shape
+fade : Number -> Shape msg -> Shape msg
 fade o (Shape x y a sx sy _ n f) =
     Shape x y a sx sy o n f
+
+
+{-| Name a shape. This lets you set a name for a shape, so you can detect when
+it is clicked.
+
+    import Playground exposing (..)
+
+    main =
+        game view update {}
+
+    view computer memory =
+        [ square
+            (if computer.mouse |> clickedName "little square" then
+                red
+
+             else
+                green
+            )
+            30
+            |> withName "little square"
+        ]
+
+    update computer memory =
+        memory
+
+-}
+withName : String -> Shape Msg -> Shape Msg
+withName n (Shape x y a sx sy o _ f) =
+    Shape x y a sx sy o (Just (ClickedName n)) f
+
+
+{-| Detect when a named shape is clicked. Use with `withName`.
+-}
+clickedName : String -> Mouse -> Bool
+clickedName n { clickedNames } =
+    List.member n clickedNames
 
 
 {-| Change the font used for the words within shapes:
@@ -1621,7 +1641,7 @@ fade o (Shape x y a sx sy _ n f) =
             ]
 
 -}
-withFont : String -> Shape -> Shape
+withFont : String -> Shape msg -> Shape msg
 withFont fontname ((Shape x y a sx sy o n f) as shape) =
     case f of
         Words c _ w ->
@@ -1892,7 +1912,7 @@ colorClamp number =
 currently are only accurate for a circle colliding with an other circle, to be
 continued..).
 -}
-collidesWith : Shape -> Shape -> Bool
+collidesWith : Shape msg -> Shape msg -> Bool
 collidesWith shape2 shape1 =
     (shape1 |> distanceTo shape2) <= 0
 
@@ -1911,7 +1931,7 @@ collidesWith shape2 shape1 =
             |> distanceTo shape1
 
 -}
-distanceTo : Shape -> Shape -> Number
+distanceTo : Shape msg -> Shape msg -> Number
 distanceTo shape2 shape1 =
     let
         ( cx1, cy1 ) =
@@ -1935,8 +1955,8 @@ distanceTo shape2 shape1 =
 
 {-| Extracts the position from any shape.
 -}
-center : Shape -> ( Number, Number )
-center (Shape x y _ _ _ _ shape) =
+center : Shape msg -> ( Number, Number )
+center (Shape x y _ _ _ _ _ shape) =
     case shape of
         Group [] ->
             ( x, y )
@@ -1965,7 +1985,7 @@ center (Shape x y _ _ _ _ shape) =
 
 {-| Calculates (the currently very crude approximation of) the extent (size) of any (group of) shape(s).
 -}
-extent : Shape -> Number
+extent : Shape msg -> Number
 extent (Shape _ _ _ _ _ _ _ form) =
     case form of
         Circle _ size ->
@@ -2010,7 +2030,7 @@ extent (Shape _ _ _ _ _ _ _ form) =
 -- RENDER
 
 
-render : Screen -> List Shape -> Html.Html msg
+render : Screen -> List (Shape msg) -> Html.Html msg
 render screen shapes =
     let
         w =
@@ -2043,41 +2063,32 @@ render screen shapes =
 --
 
 
-renderShape : Shape -> Svg msg
-renderShape (Shape x y angle sx sy alpha name form) =
+renderShape : Shape msg -> Svg msg
+renderShape (Shape x y angle sx sy alpha msg form) =
     case form of
         Circle color radius ->
-            renderCircle color radius x y angle sx sy alpha name
+            renderCircle color radius x y angle sx sy alpha msg
 
         Oval color width height ->
-            renderOval color width height x y angle sx sy alpha name
+            renderOval color width height x y angle sx sy alpha msg
 
         Rectangle color width height ->
-            renderRectangle color width height x y angle sx sy alpha name
+            renderRectangle color width height x y angle sx sy alpha msg
 
         Ngon color n radius ->
-            renderNgon color n radius x y angle sx sy alpha name
+            renderNgon color n radius x y angle sx sy alpha msg
 
         Polygon color points ->
-            renderPolygon color points x y angle sx sy alpha name
+            renderPolygon color points x y angle sx sy alpha msg
 
         Image width height src ->
-            renderImage width height src x y angle sx sy alpha name
+            renderImage width height src x y angle sx sy alpha msg
 
         Words color font string ->
-            renderWords color font string x y angle sx sy alpha name
+            renderWords color font string x y angle sx sy alpha msg
 
         Group shapes ->
-            let
-                clickable =
-                    case name of
-                        Nothing ->
-                            []
-
-                        Just n ->
-                            [ Svg.Events.onClick (ClickedShapeWithName n) ]
-            in
-            g (transform (renderTransform x y angle sx sy) :: clickable :: renderAlpha alpha)
+            g (transform (renderTransform x y angle sx sy) :: renderAlpha alpha ++ renderOnClick msg)
                 (List.map renderShape shapes)
 
 
@@ -2085,25 +2096,27 @@ renderShape (Shape x y angle sx sy alpha name form) =
 -- RENDER CIRCLE AND OVAL
 
 
-renderCircle : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Svg msg
-renderCircle color radius x y angle sx sy alpha =
+renderCircle : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderCircle color radius x y angle sx sy alpha msg =
     Svg.circle
         (r (String.fromFloat radius)
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
+            ++ renderOnClick msg
         )
         []
 
 
-renderOval : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Svg msg
-renderOval color width height x y angle sx sy alpha =
+renderOval : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderOval color width height x y angle sx sy alpha msg =
     ellipse
         (rx (String.fromFloat (width / 2))
             :: ry (String.fromFloat (height / 2))
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
+            ++ renderOnClick msg
         )
         []
 
@@ -2112,14 +2125,15 @@ renderOval color width height x y angle sx sy alpha =
 -- RENDER RECTANGLE AND IMAGE
 
 
-renderRectangle : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Svg msg
-renderRectangle color w h x y angle sx sy alpha =
+renderRectangle : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderRectangle color w h x y angle sx sy alpha msg =
     rect
         (width (String.fromFloat w)
             :: height (String.fromFloat h)
             :: fill (renderColor color)
             :: transform (renderRectTransform w h x y angle sx sy)
             :: renderAlpha alpha
+            ++ renderOnClick msg
         )
         []
 
@@ -2134,14 +2148,15 @@ renderRectTransform width height x y angle sx sy =
         ++ ")"
 
 
-renderImage : Number -> Number -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Svg msg
-renderImage w h src x y angle sx sy alpha =
+renderImage : Number -> Number -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderImage w h src x y angle sx sy alpha msg =
     Svg.image
         (xlinkHref src
             :: width (String.fromFloat w)
             :: height (String.fromFloat h)
             :: transform (renderRectTransform w h x y angle sx sy)
             :: renderAlpha alpha
+            ++ renderOnClick msg
         )
         []
 
@@ -2150,13 +2165,14 @@ renderImage w h src x y angle sx sy alpha =
 -- RENDER NGON
 
 
-renderNgon : Color -> Int -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Svg msg
-renderNgon color n radius x y angle sx sy alpha =
+renderNgon : Color -> Int -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderNgon color n radius x y angle sx sy alpha msg =
     Svg.polygon
         (points (toNgonPoints 0 n radius "")
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
+            ++ renderOnClick msg
         )
         []
 
@@ -2184,13 +2200,14 @@ toNgonPoints i n radius string =
 -- RENDER POLYGON
 
 
-renderPolygon : Color -> List ( Number, Number ) -> Number -> Number -> Number -> Number -> Number -> Number -> Svg msg
-renderPolygon color coordinates x y angle sx sy alpha =
+renderPolygon : Color -> List ( Number, Number ) -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderPolygon color coordinates x y angle sx sy alpha msg =
     Svg.polygon
         (points (List.foldl addPoint "" coordinates)
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
+            ++ renderOnClick msg
         )
         []
 
@@ -2204,8 +2221,8 @@ addPoint ( x, y ) str =
 -- RENDER WORDS
 
 
-renderWords : Color -> Font -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Svg msg
-renderWords color maybeFont string x y angle sx sy alpha =
+renderWords : Color -> Font -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderWords color maybeFont string x y angle sx sy alpha msg =
     let
         font =
             maybeFont
@@ -2218,6 +2235,7 @@ renderWords color maybeFont string x y angle sx sy alpha =
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
+            ++ renderOnClick msg
             ++ font
         )
         [ text string
@@ -2287,3 +2305,13 @@ renderTransform x y a sx sy =
 
     else
         "translate(" ++ String.fromFloat x ++ "," ++ String.fromFloat -y ++ ") rotate(" ++ String.fromFloat -a ++ ") scale(" ++ String.fromFloat sx ++ ", " ++ String.fromFloat sy ++ ")"
+
+
+renderOnClick : Maybe msg -> List (Svg.Attribute msg)
+renderOnClick m =
+    case m of
+        Nothing ->
+            []
+
+        Just msg ->
+            [ Svg.Events.onClick msg ]
