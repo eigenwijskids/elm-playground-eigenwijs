@@ -1,0 +1,50 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Audio</title>
+  <style>body { padding: 0; margin: 0; }</style>
+  <script type="text/javascript" src="./audio.js"></script>
+  <script type="text/javascript" src="./elm-web-audio.js"></script>
+</head>
+
+<body>
+
+<pre id="elm"></pre>
+
+<script>
+try {
+  const ctx = new AudioContext();
+  var app = Elm.Audio.init({ node: document.getElementById("elm"), flags: {audiocontext: ctx} });
+
+  if (app.ports) {
+    if (app.ports.toWebAudio) {
+      try {
+        const virtualCtx = new VirtualAudioContext(ctx);
+        app.ports.toWebAudio.subscribe((nodes) => {
+          virtualCtx.update(nodes);
+        });
+      } catch (e) {
+        console.log(e);
+      }
+    }
+  }
+}
+catch (e)
+{
+  // display initialization errors (e.g. bad flags, infinite recursion)
+  var header = document.createElement("h1");
+  header.style.fontFamily = "monospace";
+  header.innerText = "Initialization Error";
+  var pre = document.getElementById("elm");
+  document.body.insertBefore(header, pre);
+  if (pre)
+    { pre.innerText = e }
+  else
+    { header.after(e) };
+  throw e;
+}
+</script>
+
+</body>
+</html>

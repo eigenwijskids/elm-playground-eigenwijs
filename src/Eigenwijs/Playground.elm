@@ -15,6 +15,7 @@ module Eigenwijs.Playground exposing
     , white, lightGrey, grey, darkGrey, lightCharcoal, charcoal, darkCharcoal, black
     , lightGray, gray, darkGray
     , Number
+    , gameWithAudio, AudioPort
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture, PictureMsg
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
@@ -104,6 +105,11 @@ module Eigenwijs.Playground exposing
 @docs Number
 
 
+# Audio
+
+@docs gameWithAudio, AudioPort
+
+
 # Playground Picture embeds
 
 @docs pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture, PictureMsg
@@ -131,12 +137,15 @@ import Browser.Events as E
 import Html
 import Html.Attributes as H
 import Json.Decode as D
+import Json.Encode
 import Set
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
 import Svg.Events
 import Task
 import Time
+import WebAudio
+import WebAudio.Property
 
 
 
@@ -2315,3 +2324,39 @@ renderOnClick m =
 
         Just msg ->
             [ Svg.Events.onClick msg ]
+
+
+
+-- AUDIO
+
+
+type alias AudioPort msg =
+    Json.Encode.Value -> Cmd msg
+
+
+gameWithAudio : AudioPort Msg -> (Computer -> memory -> List WebAudio.Node) -> (Computer -> memory -> List (Shape Msg)) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
+    let
+        view model =
+            { title = "Playground"
+            , body = [ gameView viewMemory model ]
+            }
+
+        update msg ((Game vis memory computer) as model) =
+            ( gameUpdate updateMemory msg model
+            , audioForMemory computer memory
+                |> Json.Encode.list WebAudio.encode
+                |> toWebAudio
+            )
+    in
+    Browser.document
+        { init = gameInit initialMemory
+        , view = view
+        , update = update
+        , subscriptions = gameSubscriptions
+        }
+
+
+gameAudio : (Computer -> memory -> List WebAudio.Node) -> Game memory -> List WebAudio.Node
+gameAudio audioForMemory (Game vis memory computer) =
+    audioForMemory computer memory
