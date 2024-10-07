@@ -2330,10 +2330,25 @@ renderOnClick m =
 -- AUDIO
 
 
+{-| The AudioPort connects our Elm game to a piece of javascript in the html file the game is embedded in,
+so it can access the WebAudio API. Use in your game program as follows:
+
+    port module Main exposing (main)
+
+    import Eigenwijs.Playground
+
+    port audioPort : Eigenwijs.Playground.AudioPort msg
+
+-}
 type alias AudioPort msg =
     Json.Encode.Value -> Cmd msg
 
 
+{-| Create a game with web audio elements such as oscillators.
+
+This is still a work in progress, more documentation and tuning of the api is to come.
+
+-}
 gameWithAudio : AudioPort Msg -> (Computer -> memory -> List WebAudio.Node) -> (Computer -> memory -> List (Shape Msg)) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
 gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
     let
@@ -2355,8 +2370,3 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
         , update = update
         , subscriptions = gameSubscriptions
         }
-
-
-gameAudio : (Computer -> memory -> List WebAudio.Node) -> Game memory -> List WebAudio.Node
-gameAudio audioForMemory (Game vis memory computer) =
-    audioForMemory computer memory
