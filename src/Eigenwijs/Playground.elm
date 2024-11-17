@@ -2161,6 +2161,7 @@ renderImage : Number -> Number -> String -> Number -> Number -> Number -> Number
 renderImage w h src x y angle sx sy alpha msg =
     Svg.image
         (xlinkHref src
+            :: imageRendering "pixelated"
             :: width (String.fromFloat w)
             :: height (String.fromFloat h)
             :: transform (renderRectTransform w h x y angle sx sy)
