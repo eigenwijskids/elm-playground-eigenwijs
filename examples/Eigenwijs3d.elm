@@ -54,4 +54,6 @@ main =
                 |> move -50 50 0
             ]
             |> pullUp 90
+        , cone green 20 80
+            |> move -100 100 0
         ]

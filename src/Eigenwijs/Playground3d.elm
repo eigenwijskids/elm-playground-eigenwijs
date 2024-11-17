@@ -1,7 +1,7 @@
 module Eigenwijs.Playground3d exposing
     ( picture, animation, game
     , Shape, circle, square, rectangle, triangle, polygon, snake
-    , sphere, cylinder, cube, block
+    , sphere, cylinder, cone, cube, block
     , words
     , move, moveX, moveY, moveZ
     , scale, rotate, roll, pitch, yaw, fade
@@ -56,7 +56,7 @@ The following primitives work in a (slightly) different way:
 
 # 3D Shapes
 
-@docs sphere, cylinder, cube, block
+@docs sphere, cylinder, cone, cube, block
 
 
 # Words
@@ -160,6 +160,7 @@ import Browser.Dom as Dom
 import Browser.Events as E
 import Camera3d exposing (Camera3d)
 import Color exposing (..)
+import Cone3d
 import Cylinder3d
 import DelaunayTriangulation2d
 import Direction3d exposing (Direction3d)
@@ -1514,6 +1515,7 @@ type Form
     | Snake Color (List ( Number, Number, Number ))
     | Sphere Color Number
     | Cylinder Color Number Number
+    | Cone Color Number Number
     | Cube Color Number
     | Block Color Number Number Number
     | Prism Color Number Number
@@ -1557,6 +1559,19 @@ You give a color, the radius and then the height.
 cylinder : Color -> Number -> Number -> Shape
 cylinder color radius height =
     Shape 0 0 0 0 0 0 1 1 (Cylinder color radius height)
+
+
+{-| Make cones:
+
+    spike =
+        cone red 10 50
+
+You give a color, the radius and then the height.
+
+-}
+cone : Color -> Number -> Number -> Shape
+cone color radius height =
+    Shape 0 0 0 0 0 0 1 1 (Cone color radius height)
 
 
 {-| Make triangles:
@@ -2343,6 +2358,9 @@ extent (Shape _ _ _ _ _ _ _ _ form) =
         Cylinder _ radius height ->
             max radius (height / 2)
 
+        Cone _ radius height ->
+            max radius (height / 2)
+
         Cube _ size ->
             size / 2
 
@@ -2427,6 +2445,9 @@ extents (Shape _ _ _ _ _ _ _ _ form) =
         Cylinder _ radius height ->
             ( radius, radius, height / 2 )
 
+        Cone _ radius height ->
+            ( radius, radius, height )
+
         Cube _ size ->
             ( size / 2, size / 2, size / 2 )
 
@@ -2434,7 +2455,7 @@ extents (Shape _ _ _ _ _ _ _ _ form) =
             ( w / 2, h / 2, d / 2 )
 
         Prism _ radius height ->
-            ( radius, radius, height / 2 )
+            ( radius, radius, height )
 
         Wall _ height points ->
             let
@@ -2580,6 +2601,9 @@ renderForm font form =
         Cylinder color radius height ->
             renderCylinder { color = color, roughness = 0.4 } radius height
 
+        Cone color radius height ->
+            renderCone { color = color, roughness = 0.4 } radius height
+
         Triangle color size ->
             renderTriangle color size
 
@@ -2657,6 +2681,16 @@ renderCylinder { color, roughness } radius height =
         , length = Length.centimeters height
         }
         |> Scene3d.cylinder (material color roughness)
+
+
+renderCone : Material -> Number -> Number -> Entity coordinates
+renderCone { color, roughness } radius height =
+    Cone3d.along Axis3d.z
+        { base = Length.centimeters 0
+        , tip = Length.centimeters height
+        , radius = Length.centimeters radius
+        }
+        |> Scene3d.cone (material color roughness)
 
 
 renderTriangle : Color -> Number -> Entity coordinates
