@@ -1009,9 +1009,7 @@ withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibilit
                     else
                         sendIntervalInSeconds
             }
-        , memory.outbox
-            |> List.map (postMessage server name)
-            |> Cmd.batch
+        , postMessages server name memory.outbox
         )
 
     else
@@ -1020,8 +1018,8 @@ withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibilit
         )
 
 
-postMessage : String -> String -> ( String, String, String ) -> Cmd Msg
-postMessage url sender ( subject, predicate, object ) =
+postMessages : String -> String -> List ( String, String, String ) -> Cmd Msg
+postMessages url sender messages =
     case String.trim url of
         "" ->
             Cmd.none
@@ -1031,14 +1029,20 @@ postMessage url sender ( subject, predicate, object ) =
                 { url = trimmedUrl
                 , expect = Http.expectJson MessagesReceived (D.list messageDecoder)
                 , body =
-                    [ ( "sender", E.string sender )
-                    , ( "subject", E.string subject )
-                    , ( "predicate", E.string predicate )
-                    , ( "object", E.string object )
-                    ]
-                        |> E.object
+                    messages
+                        |> E.list (messageEncoded sender)
                         |> Http.jsonBody
                 }
+
+
+messageEncoded : String -> ( String, String, String ) -> E.Value
+messageEncoded sender ( subject, predicate, object ) =
+    [ ( "sender", E.string sender )
+    , ( "subject", E.string subject )
+    , ( "predicate", E.string predicate )
+    , ( "object", E.string object )
+    ]
+        |> E.object
 
 
 messageDecoder : D.Decoder Message
