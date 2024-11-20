@@ -1,7 +1,7 @@
 module Eigenwijs.Playground3d exposing
     ( picture, animation, game
     , Shape, circle, square, rectangle, triangle, polygon, snake
-    , sphere, cylinder, cone, cube, block
+    , sphere, cylinder, cone, cube, block, obj
     , words
     , move, moveX, moveY, moveZ
     , scale, rotate, roll, pitch, yaw, fade
@@ -56,7 +56,7 @@ The following primitives work in a (slightly) different way:
 
 # 3D Shapes
 
-@docs sphere, cylinder, cone, cube, block
+@docs sphere, cylinder, cone, cube, block, obj
 
 
 # Words
@@ -1521,6 +1521,7 @@ type Form
     | Prism Color Number Number
     | Wall Color Number (List ( Number, Number, Number ))
     | Words Color String
+    | Object Color (List ( Number, Number, Number )) (List ( Int, Int, Int ))
 
 
 type alias Font =
@@ -1703,6 +1704,34 @@ vertical part of the cross, the thinner and taller part.
 block : Color -> Number -> Number -> Number -> Shape
 block color width height depth =
     Shape 0 0 0 0 0 0 1 1 (Block color width height depth)
+
+
+{-| Make 3d objects from vertices and faces, such as a pyramid:
+
+    import Playground3d exposing (..)
+
+    main =
+        picture
+            [ obj
+                [ ( 1, 1, -1 )
+                , ( 1, -1, -1 )
+                , ( -1, -1, -1 )
+                , ( -1, 1, -1 )
+                , ( 0, 0, 1 )
+                ]
+                [ ( 1, 2, 3 )
+                , ( 3, 4, 1 )
+                , ( 1, 4, 5 )
+                , ( 5, 4, 3 )
+                , ( 3, 2, 5 )
+                , ( 5, 2, 1 )
+                ]
+            ]
+
+-}
+obj : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Shape
+obj color vertices faces =
+    Shape 0 0 0 0 0 0 1 1 (Object color vertices faces)
 
 
 {-| Put shapes together so you can [`move`](#move) and [`rotate`](#rotate)
@@ -2384,6 +2413,20 @@ extent (Shape _ _ _ _ _ _ _ _ form) =
             in
             max height (max (maxx - minx) (max (maxy - miny) (maxz - minz))) / 2
 
+        Object _ points _ ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            max (maxx - minx) (max (maxy - miny) (maxz - minz)) / 2
+
         Words _ _ ->
             0
 
@@ -2464,6 +2507,20 @@ extents (Shape _ _ _ _ _ _ _ _ form) =
                         (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
                             ( ( min x minx1, min y miny1, min z minz1 )
                             , ( max x maxx1, max y maxy1, max (z + height) maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, (maxz - minz) / 2 )
+
+        Object _ points _ ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
                             )
                         )
                         ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
@@ -2641,6 +2698,9 @@ renderForm font form =
 
                 Just f ->
                     renderWords f color string
+
+        Object color vertices faces ->
+            renderObject color vertices faces
 
 
 
@@ -2860,6 +2920,25 @@ renderWall color height points =
         (points
             |> List.map (\( x, y, z ) -> Point3d.centimeters x y (z + height / 2))
         )
+        |> Scene3d.Mesh.indexedFacets
+        |> withColor color
+
+
+
+-- RENDER OBJECT
+
+
+renderObject : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Entity coordinates
+renderObject color vertices faces =
+    let
+        vertexToPoint ( x, y, z ) =
+            Point3d.centimeters x y z
+
+        faceNullBased : ( Int, Int, Int ) -> ( Int, Int, Int )
+        faceNullBased ( i, j, k ) =
+            ( i - 1, j - 1, k - 1 )
+    in
+    TriangularMesh.indexed (vertices |> List.map vertexToPoint |> Array.fromList) (faces |> List.map faceNullBased)
         |> Scene3d.Mesh.indexedFacets
         |> withColor color
 
