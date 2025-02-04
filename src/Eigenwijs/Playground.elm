@@ -20,6 +20,7 @@ module Eigenwijs.Playground exposing
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
     , center, extent, distanceTo, collidesWith
+    , pathFromCommands, forward, turn, turnTo
     )
 
 {-|
@@ -128,6 +129,11 @@ module Eigenwijs.Playground exposing
 # Calculations
 
 @docs center, extent, distanceTo, collidesWith
+
+
+# Generating lists of coordinates (paths)
+
+@docs pathFromCommands, forward, turn, turnTo
 
 -}
 
@@ -2033,6 +2039,82 @@ extent (Shape _ _ _ _ _ _ _ form) =
 
         Group shapes ->
             List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
+
+
+
+-- GENERATING COORDINATES
+
+
+type alias Cursor =
+    ( ( Number, Number ), Number )
+
+
+type alias CursorTransform =
+    Cursor -> Cursor
+
+
+{-| Make a list of coordinates starting from point (0, 0) adding new points
+from a recipe; a list of commands, such as:
+
+    main =
+        picture [ polygon green trousers ]
+
+    trousers =
+        pathFromCommands
+            [ forward 55
+            , turn -92
+            , forward 100
+            , turnTo 180
+            , forward 20
+            , turn -88
+            , forward 80
+            , turn 176
+            , forward 80
+            , turnTo 180
+            , forward 20
+            , turn -88
+            ]
+
+-}
+pathFromCommands : List CursorTransform -> List ( Number, Number )
+pathFromCommands commands =
+    commands
+        |> List.foldl
+            (\cmd ( ( lastPoint, lastRotation ), points ) ->
+                let
+                    ( point, rotation ) =
+                        cmd ( lastPoint, lastRotation )
+                in
+                if lastPoint == point then
+                    ( ( point, rotation ), points )
+
+                else
+                    ( ( point, rotation ), point :: points )
+            )
+            ( ( ( 0, 0 ), 0 ), [ ( 0, 0 ) ] )
+        |> Tuple.second
+        |> List.reverse
+
+
+{-| For use with pathFromCommands: move n steps forward.
+-}
+forward : Number -> CursorTransform
+forward n ( ( x, y ), r ) =
+    ( ( x + n * cos r, y + n * sin r ), r )
+
+
+{-| For use with pathFromCommands: turn n degrees counter clockwise.
+-}
+turn : Number -> CursorTransform
+turn n ( ( x, y ), r ) =
+    ( ( x, y ), r + degrees n )
+
+
+{-| For use with pathFromCommands: change direction to the angle n in degrees, turning counter clockwise.
+-}
+turnTo : Number -> CursorTransform
+turnTo n ( ( x, y ), _ ) =
+    ( ( x, y ), degrees n )
 
 
 
