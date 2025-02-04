@@ -3,7 +3,7 @@ module Eigenwijs.Playground exposing
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
     , words, withFont
     , image
-    , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong
+    , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
     , scale, scaleX, scaleY, rotate, fade
     , withName, clickedName
     , group
@@ -19,7 +19,8 @@ module Eigenwijs.Playground exposing
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture, PictureMsg
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    , center, extent, distanceTo, collidesWith
+    , center, extent, distanceTo, collidesWith, containsPoint, toPolygon
+    , verticesOf, pointsOf, positionOf, scaleOf, rotationOf
     , pathFromCommands, forward, turn, turnTo
     )
 
@@ -48,7 +49,7 @@ module Eigenwijs.Playground exposing
 
 # Move Shapes
 
-@docs move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong
+@docs move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
 
 
 # Customize Shapes
@@ -128,7 +129,8 @@ module Eigenwijs.Playground exposing
 
 # Calculations
 
-@docs center, extent, distanceTo, collidesWith
+@docs center, extent, distanceTo, collidesWith, containsPoint, toPolygon
+@docs verticesOf, pointsOf, positionOf, scaleOf, rotationOf
 
 
 # Generating lists of coordinates (paths)
@@ -137,6 +139,7 @@ module Eigenwijs.Playground exposing
 
 -}
 
+import Angle
 import Browser
 import Browser.Dom as Dom
 import Browser.Events as E
@@ -144,12 +147,16 @@ import Html
 import Html.Attributes as H
 import Json.Decode as D
 import Json.Encode
+import Point2d
+import Polygon2d exposing (Polygon2d)
+import Quantity exposing (Unitless)
 import Set
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
 import Svg.Events
 import Task
 import Time
+import Vector2d
 import WebAudio
 import WebAudio.Property
 
@@ -1482,38 +1489,75 @@ So in the example below, the circle is moved halfway on the path:
 moveAlong : List ( Number, Number ) -> Number -> Shape msg -> Shape msg
 moveAlong path amount ((Shape x y a sx sy o n f) as shape) =
     let
-        ( totalLength, _ ) =
-            path
-                |> List.foldl
-                    (\( x2, y2 ) ( length, ( x1, y1 ) ) ->
-                        ( length + sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2), ( x2, y2 ) )
-                    )
-                    ( 0, ( x, y ) )
+        totalLength =
+            case path of
+                ( x1, y1 ) :: rest ->
+                    rest
+                        |> List.foldl
+                            (\( x3, y3 ) ( length, ( x2, y2 ) ) ->
+                                ( length + sqrt ((x3 - x2) ^ 2 + (y3 - y2) ^ 2), ( x3, y3 ) )
+                            )
+                            ( 0, ( x1, y1 ) )
+                        |> Tuple.first
 
-        ( ( nx, ny ), _ ) =
-            path
-                |> List.foldl
-                    (\( x2, y2 ) ( ( x1, y1 ), amountLeft ) ->
-                        if amountLeft < 0 then
-                            ( ( x1, y1 ), 0 )
+                _ ->
+                    0
 
-                        else
-                            let
-                                length =
-                                    sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+        ( nx, ny ) =
+            case path of
+                [] ->
+                    ( 0, 0 )
 
-                                factor =
-                                    if length == 0 then
-                                        0
+                [ ( x1, y1 ) ] ->
+                    ( x1, y1 )
 
-                                    else
-                                        Basics.min amountLeft length / length
-                            in
-                            ( ( x1 + (x2 - x1) * factor, y1 + (y2 - y1) * factor ), amountLeft - length )
-                    )
-                    ( ( x, y ), amount * totalLength )
+                ( x1, y1 ) :: rest ->
+                    rest
+                        |> List.foldl
+                            (\( x3, y3 ) ( ( x2, y2 ), amountLeft ) ->
+                                if amountLeft < 0 then
+                                    ( ( x2, y2 ), 0 )
+
+                                else
+                                    let
+                                        length =
+                                            sqrt ((x3 - x2) ^ 2 + (y3 - y2) ^ 2)
+
+                                        factor =
+                                            if length == 0 then
+                                                0
+
+                                            else
+                                                Basics.min amountLeft length / length
+                                    in
+                                    ( ( x2 + (x3 - x2) * factor, y2 + (y3 - y2) * factor ), amountLeft - length )
+                            )
+                            ( ( x1, y1 ), amount * totalLength )
+                        |> Tuple.first
     in
-    Shape nx ny a sx sy o n f
+    Shape (x + nx) (y + ny) a sx sy o n f
+
+
+{-| Move a shape along a path, just like with moveAlong, but by adding the first
+point also as the last one, we make sure that when amount reaches 1, we end up
+back at the beginning of the path. In this way you can keep looping from 0 to 1
+and continue from 0 again.
+-}
+moveAlongLoop : List ( Number, Number ) -> Number -> Shape msg -> Shape msg
+moveAlongLoop path amount shape =
+    let
+        loop =
+            case path of
+                [] ->
+                    []
+
+                [ point ] ->
+                    [ point ]
+
+                point :: rest ->
+                    point :: rest ++ [ point ]
+    in
+    moveAlong loop amount shape
 
 
 {-| Make a shape bigger or smaller. So if you wanted some [`words`](#words) to
@@ -1923,9 +1967,7 @@ colorClamp number =
 -- COLLISIONS
 
 
-{-| Indicates whether two (groups of) shapes collide (BEWARE: the calculations
-currently are only accurate for a circle colliding with an other circle, to be
-continued..).
+{-| Indicates whether two (groups of) shapes collide.
 -}
 collidesWith : Shape msg -> Shape msg -> Bool
 collidesWith shape2 shape1 =
@@ -1948,27 +1990,279 @@ collidesWith shape2 shape1 =
 -}
 distanceTo : Shape msg -> Shape msg -> Number
 distanceTo shape2 shape1 =
+    case ( formOf shape1, formOf shape2 ) of
+        ( Group shapes, _ ) ->
+            shapes
+                |> List.map (transformUsing shape1 >> distanceTo shape2)
+                |> List.minimum
+                |> Maybe.withDefault 0
+
+        ( _, Group shapes ) ->
+            shapes
+                |> List.map (transformUsing shape2 >> distanceTo shape1)
+                |> List.minimum
+                |> Maybe.withDefault 0
+
+        ( Rectangle _ w h, _ ) ->
+            let
+                ( x, y ) =
+                    positionOf shape1
+
+                ( c, e ) =
+                    ( positionOf shape2, extent shape2 )
+            in
+            distanceFromCircle c e { x = x, y = y, width = w, height = h, angle = rotationOf shape1 }
+
+        ( _, Rectangle _ w h ) ->
+            let
+                ( x, y ) =
+                    positionOf shape2
+
+                ( c, e ) =
+                    ( positionOf shape1, extent shape1 )
+            in
+            distanceFromCircle c e { x = x, y = y, width = w, height = h, angle = rotationOf shape2 }
+
+        _ ->
+            let
+                ( cx1, cy1 ) =
+                    center shape1
+
+                ( cx2, cy2 ) =
+                    center shape2
+
+                -- potential contact point c1 + df(angle(c1->c2))*(c1->c2)
+                -- potential contact point c2 + df(angle(c2->c1))*(c2->c1)
+                -- simplification: circles
+                e1 =
+                    extent shape1
+
+                -- TODO: needs to take angle and radially parametrized distance to edge function
+                e2 =
+                    extent shape2
+            in
+            sqrt ((cx2 - cx1) ^ 2 + (cy2 - cy1) ^ 2) - e1 - e2
+
+
+distanceFromCircle ( cx, cy ) cr { x, y, width, height, angle } =
     let
-        ( cx1, cy1 ) =
-            center shape1
+        rad =
+            degrees angle
 
-        ( cx2, cy2 ) =
-            center shape2
+        -- move the center of the circle back relative to the
+        -- rectangle (so the latter is centered around the origin)
+        ( dx, dy ) =
+            ( cx - x, cy - y )
 
-        -- potential contact point c1 + df(angle(c1->c2))*(c1->c2)
-        -- potential contact point c2 + df(angle(c2->c1))*(c2->c1)
-        -- simplification: circles
-        e1 =
-            extent shape1
+        -- calculate the distance between the centers and rotate
+        -- the circle back, so the distance function for the
+        -- rectangle can be stationary (not rotated)
+        d =
+            sqrt (dx ^ 2 + dy ^ 2)
 
-        -- TODO: needs to take angle and radially parametrized distance to edge function
-        e2 =
-            extent shape2
+        cosalpha =
+            dx / d
+
+        theta =
+            rad
+                - (if dy >= 0 then
+                    acos cosalpha
+
+                   else
+                    -(acos cosalpha)
+                  )
+
+        ( cx_, cy_ ) =
+            ( d * cos -theta, d * sin -theta )
+
+        hw =
+            width / 2
+
+        hh =
+            height / 2
     in
-    sqrt ((cx2 - cx1) ^ 2 + (cy2 - cy1) ^ 2) - e1 - e2
+    if abs (tan theta) <= hh / hw then
+        d - cr - (hw / abs (cos theta))
+
+    else
+        d - cr - (hh / abs (sin theta))
 
 
-{-| Extracts the position from any shape.
+{-| Returns true if the point (x, y) lies within the shape.
+-}
+containsPoint : ( Number, Number ) -> Shape msg -> Bool
+containsPoint ( x, y ) shape =
+    case shape of
+        Shape x_ y_ _ sx sy _ _ (Circle _ r) ->
+            let
+                ( a, b ) =
+                    ( sx * (x - x_), sy * (y - y_) )
+            in
+            sqrt (a ^ 2 + b ^ 2) <= r
+
+        Shape x_ y_ _ sx sy _ _ (Group shapes) ->
+            if sx == 0 || sy == 0 then
+                False
+
+            else
+                shapes
+                    |> List.any (containsPoint ( (x - x_) / sx, (y - y_) / sy ))
+
+        _ ->
+            shape
+                |> toPolygon2d
+                |> Polygon2d.contains (Point2d.unitless x y)
+
+
+{-| This function is the same as `verticesOf` ("vertices" is a more formal way
+of saying "points" or "coordinates").
+-}
+pointsOf : Shape msg -> List ( Number, Number )
+pointsOf =
+    verticesOf
+
+
+{-| Returns a list of vertices (points) corresponding to the circumference of
+the shape. If the shape is circular, this returns an approximating polygon.
+-}
+verticesOf : Shape msg -> List ( Number, Number )
+verticesOf shape =
+    case shape of
+        Shape x y r sx sy _ _ (Polygon _ points) ->
+            points
+                |> List.map (transformCoordinates x y r sx sy)
+
+        _ ->
+            shape
+                |> toPolygon2d
+                |> Polygon2d.vertices
+                |> List.map (Point2d.unwrap >> (\{ x, y } -> ( x, y )))
+
+
+{-| Convert any shape to a polygon representation of it (a circle would get
+translated into an approximation of a circle using line segments, currently
+an octagon). This can be used to create a polygon from a group of arranged
+basic shapes, as an alternative way definition; it is sometimes easier than
+enumerating all the points one by one as coordinate pairs.
+-}
+toPolygon : Color -> Shape msg -> Shape msg
+toPolygon color ((Shape _ _ _ _ _ o name _) as shape) =
+    toPolygon2d shape
+        |> Polygon2d.vertices
+        |> List.map (Point2d.unwrap >> (\{ x, y } -> ( x, y )))
+        |> Polygon color
+        |> Shape 0 0 0 1 1 o name
+
+
+{-| Convert an elm-geometry Polygon2d to a polygone Shape with specified color.
+-}
+polygonFromPolygon2d : Color -> Polygon2d unit coords -> Shape msg
+polygonFromPolygon2d color p2d =
+    p2d
+        |> Polygon2d.vertices
+        |> List.map (Point2d.unwrap >> (\{ x, y } -> ( x, y )))
+        |> Polygon color
+        |> Shape 0 0 0 1 1 1 Nothing
+
+
+toPolygon2d : Shape msg -> Polygon2d Unitless coords
+toPolygon2d (Shape x y rot sx sy o name f) =
+    let
+        transform =
+            Polygon2d.translateBy (Vector2d.unitless x y)
+                >> Polygon2d.rotateAround Point2d.origin (Angle.degrees rot)
+    in
+    case f of
+        -- Crude octagonal approximation
+        Circle color r ->
+            toPolygon2d (Shape x y rot sx sy o name (Ngon color 8 r))
+
+        -- Crude single-axis scaled octagonal approximation
+        Oval color w h ->
+            let
+                sy_ =
+                    sy
+                        * (if w == 0 then
+                            0
+
+                           else
+                            h / w
+                          )
+            in
+            toPolygon2d (Shape x y rot sx sy_ o name (Ngon color 8 (w / 2)))
+
+        Rectangle _ w h ->
+            let
+                ( hw, hh ) =
+                    ( sx * w / 2, sy * h / 2 )
+            in
+            [ Point2d.unitless hw hh
+            , Point2d.unitless -hw hh
+            , Point2d.unitless -hw -hh
+            , Point2d.unitless hw -hh
+            ]
+                |> Polygon2d.singleLoop
+                |> transform
+
+        Ngon _ 0 _ ->
+            Polygon2d.singleLoop []
+
+        Ngon _ n r ->
+            let
+                point a =
+                    Point2d.unitless (sx * r * cos a) (sy * r * sin a)
+            in
+            List.range 0 (n - 1)
+                |> List.map
+                    (\i -> toFloat i / toFloat n - 0.25 |> turns |> point)
+                |> Polygon2d.singleLoop
+                |> transform
+
+        Polygon _ points ->
+            points
+                |> List.map (\( x_, y_ ) -> Point2d.unitless (sx * x_) (sy * y_))
+                |> Polygon2d.singleLoop
+                |> transform
+
+        Image w h _ ->
+            toPolygon2d (Shape x y rot sx sy o name (Rectangle white w h))
+
+        Words _ _ _ ->
+            Polygon2d.singleLoop []
+
+        Group shapes ->
+            shapes
+                |> List.concatMap (toPolygon2d >> Polygon2d.vertices)
+                |> Polygon2d.convexHull
+                |> transform
+
+
+{-| Returns the position of a shape, as a pair (x, y).
+-}
+positionOf : Shape msg -> ( Number, Number )
+positionOf (Shape x y _ _ _ _ _ _) =
+    ( x, y )
+
+
+{-| Returns the angle of rotation of a shape.
+-}
+rotationOf : Shape msg -> Number
+rotationOf (Shape _ _ r _ _ _ _ _) =
+    r
+
+
+{-| Returns the scaling set on a shape, as a pair (horizontalScaling, verticalScaling).
+-}
+scaleOf : Shape msg -> ( Number, Number )
+scaleOf (Shape _ _ _ sx sy _ _ _) =
+    ( sx, sy )
+
+
+formOf (Shape _ _ _ _ _ _ _ form) =
+    form
+
+
+{-| Extracts the center from any shape.
 -}
 center : Shape msg -> ( Number, Number )
 center (Shape x y _ _ _ _ _ shape) =
@@ -2039,6 +2333,37 @@ extent (Shape _ _ _ _ _ _ _ form) =
 
         Group shapes ->
             List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
+
+
+transformCoordinates x y a sx sy ( cx, cy ) =
+    let
+        px =
+            sx * cx
+
+        py =
+            sy * cy
+
+        d =
+            degrees a
+    in
+    ( (px * cos d) + (py * sin -d) + x, (px * sin d) + (py * cos -d) + y )
+
+
+transformUsing shape (Shape x y r sx sy alpha msg form) =
+    let
+        ( cx, cy ) =
+            positionOf shape
+
+        ( ssx, ssy ) =
+            scaleOf shape
+
+        ( px, py ) =
+            ( ssx * x, ssy * y )
+
+        sr =
+            rotationOf shape
+    in
+    Shape ((px * cos sr) + (py * sin sr) + cx) ((px * sin sr) + (py * cos sr) + cy) (r + sr) (sx + ssx) (sy + ssy) alpha msg form
 
 
 
