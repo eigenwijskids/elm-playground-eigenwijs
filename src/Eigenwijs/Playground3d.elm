@@ -212,7 +212,7 @@ import WebGL.Texture
             ]
 
 -}
-picture : List (Shape WorldCoordinates) -> Program () Picture Msg
+picture : List Shape -> Program () Picture Msg
 picture shapes =
     let
         view screen =
@@ -250,7 +250,7 @@ pictureInit () =
 
 {-| Picture view function
 -}
-pictureView : Picture -> List (Shape WorldCoordinates) -> Html.Html Msg
+pictureView : Picture -> List Shape -> Html.Html Msg
 pictureView =
     render isometric
 
@@ -741,7 +741,7 @@ Within `view` we can use functions like [`spin`](#spin), [`wave`](#wave),
 and [`zigzag`](#zigzag) to move and rotate our shapes.
 
 -}
-animation : (Time -> List (Shape WorldCoordinates)) -> Program () Animation Msg
+animation : (Time -> List Shape) -> Program () Animation Msg
 animation viewFrame =
     let
         view a =
@@ -790,7 +790,7 @@ animationInit () =
 
 {-| Animation view
 -}
-animationView : Animation -> (Time -> List (Shape WorldCoordinates)) -> Html.Html Msg
+animationView : Animation -> (Time -> List Shape) -> Html.Html Msg
 animationView (Animation _ font screen time) viewFrame =
     render
         isometric
@@ -910,14 +910,14 @@ Notice that in the `update` we use information from the keyboard to update the
 `x` and `y` values. These building blocks let you make pretty fancy games!
 
 -}
-game : (Computer -> memory -> List (Shape WorldCoordinates)) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+game : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
 game =
     gameWithCamera (always isometric)
 
 
 {-| Create a game using a specific camera for viewing the scene!
 -}
-gameWithCamera : (memory -> Camera) -> (Computer -> memory -> List (Shape WorldCoordinates)) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+gameWithCamera : (memory -> Camera) -> (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
 gameWithCamera cam viewMemory updateMemory initialMemory =
     let
         view model =
@@ -963,7 +963,7 @@ parameter. Messages sent are tagged with your sender name, configured as
 -}
 networkGame :
     Connection
-    -> (Computer -> WithMessages memory -> List (Shape WorldCoordinates))
+    -> (Computer -> WithMessages memory -> List Shape)
     -> (Computer -> WithMessages memory -> WithMessages memory)
     -> WithMessages memory
     -> Program () (Game (WithMessages memory)) Msg
@@ -973,7 +973,7 @@ networkGame connection =
 
 {-| Create a network game using a specific camera for viewing the scene!
 -}
-networkGameWithCamera : (WithMessages memory -> Camera) -> Connection -> (Computer -> WithMessages memory -> List (Shape WorldCoordinates)) -> (Computer -> WithMessages memory -> WithMessages memory) -> WithMessages memory -> Program () (Game (WithMessages memory)) Msg
+networkGameWithCamera : (WithMessages memory -> Camera) -> Connection -> (Computer -> WithMessages memory -> List Shape) -> (Computer -> WithMessages memory -> WithMessages memory) -> WithMessages memory -> Program () (Game (WithMessages memory)) Msg
 networkGameWithCamera cam connection viewMemory updateMemory initialMemory =
     let
         view model =
@@ -1090,7 +1090,7 @@ networkGameInit initialMemory () =
 
 {-| Game view function
 -}
-gameView : (memory -> Camera) -> (Computer -> memory -> List (Shape WorldCoordinates)) -> Game memory -> Html.Html Msg
+gameView : (memory -> Camera) -> (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
 gameView cam viewMemory (Game _ font memory computer) =
     render
         (cam memory)
@@ -1488,7 +1488,7 @@ Read on to see examples of [`circle`](#circle), [`rectangle`](#rectangle),
 [`words`](#words), [`image`](#image), and many more!
 
 -}
-type Shape coordinates
+type Shape
     = Shape
         Number
         -- x
@@ -1506,11 +1506,11 @@ type Shape coordinates
         -- scale
         Number
         -- alpha
-        (Form coordinates)
+        Form
 
 
-type Form coordinates
-    = Group (List (Shape coordinates))
+type Form
+    = Group (List Shape)
     | Circle Color Number
     | Triangle Color Number
     | Square Color Number
@@ -1526,7 +1526,7 @@ type Form coordinates
     | Wall Color Number (List ( Number, Number, Number ))
     | Words Color String
     | Object Color (List ( Number, Number, Number )) (List ( Int, Int, Int ))
-    | Entity (Entity coordinates)
+    | Entity (Entity WorldCoordinates)
 
 
 type alias Font =
@@ -1549,7 +1549,7 @@ You give a color and then the radius. So the higher the number, the larger
 the circle.
 
 -}
-circle : Color -> Number -> Shape coordinates
+circle : Color -> Number -> Shape
 circle color radius =
     Shape 0 0 0 0 0 0 1 1 (Circle color radius)
 
@@ -1562,7 +1562,7 @@ circle color radius =
 You give a color, the radius and then the height.
 
 -}
-cylinder : Color -> Number -> Number -> Shape coordinates
+cylinder : Color -> Number -> Number -> Shape
 cylinder color radius height =
     Shape 0 0 0 0 0 0 1 1 (Cylinder color radius height)
 
@@ -1575,7 +1575,7 @@ cylinder color radius height =
 You give a color, the radius and then the height.
 
 -}
-cone : Color -> Number -> Number -> Shape coordinates
+cone : Color -> Number -> Number -> Shape
 cone color radius height =
     Shape 0 0 0 0 0 0 1 1 (Cone color radius height)
 
@@ -1587,7 +1587,7 @@ cone color radius height =
 You give a color and then its size.
 
 -}
-triangle : Color -> Number -> Shape coordinates
+triangle : Color -> Number -> Shape
 triangle color size =
     Shape 0 0 0 0 0 0 1 1 (Triangle color size)
 
@@ -1606,7 +1606,7 @@ The number you give is the dimension of each side. So that purple square would
 be 80 pixels by 80 pixels.
 
 -}
-square : Color -> Number -> Shape coordinates
+square : Color -> Number -> Shape
 square color n =
     Shape 0 0 0 0 0 0 1 1 (Rectangle color n n)
 
@@ -1625,7 +1625,7 @@ You give the color, width, and then height. So the first shape is vertical
 part of the cross, the thinner and taller part.
 
 -}
-rectangle : Color -> Number -> Number -> Shape coordinates
+rectangle : Color -> Number -> Number -> Shape
 rectangle color width height =
     Shape 0 0 0 0 0 0 1 1 (Rectangle color width height)
 
@@ -1644,14 +1644,14 @@ rectangle color width height =
 [`move`](#move) or [`group`](#group) so that rotation makes more sense.
 
 -}
-polygon : Color -> List ( Number, Number ) -> Shape coordinates
+polygon : Color -> List ( Number, Number ) -> Shape
 polygon color points =
     Shape 0 0 0 0 0 0 1 1 (Polygon color points)
 
 
 {-| Make a snake!
 -}
-snake : Color -> List ( Number, Number, Number ) -> Shape coordinates
+snake : Color -> List ( Number, Number, Number ) -> Shape
 snake color points =
     Shape 0 0 0 0 0 0 1 1 (Snake color points)
 
@@ -1669,7 +1669,7 @@ You give the color, width, height, and then depth. So the first shape is the
 vertical part of the cross, the thinner and taller part.
 
 -}
-sphere : Color -> Number -> Shape coordinates
+sphere : Color -> Number -> Shape
 sphere color size =
     Shape 0 0 0 0 0 0 1 1 (Sphere color size)
 
@@ -1687,7 +1687,7 @@ You give the color, width, height, and then depth. So the first shape is the
 vertical part of the cross, the thinner and taller part.
 
 -}
-cube : Color -> Number -> Shape coordinates
+cube : Color -> Number -> Shape
 cube color size =
     Shape 0 0 0 0 0 0 1 1 (Cube color size)
 
@@ -1706,7 +1706,7 @@ You give the color, width, height, and then depth. So the first shape is the
 vertical part of the cross, the thinner and taller part.
 
 -}
-block : Color -> Number -> Number -> Number -> Shape coordinates
+block : Color -> Number -> Number -> Number -> Shape
 block color width height depth =
     Shape 0 0 0 0 0 0 1 1 (Block color width height depth)
 
@@ -1734,7 +1734,7 @@ block color width height depth =
             ]
 
 -}
-obj : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Shape coordinates
+obj : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Shape
 obj color vertices faces =
     Shape 0 0 0 0 0 0 1 1 (Object color vertices faces)
 
@@ -1790,7 +1790,7 @@ still want to animate its head:
             ]
 
 -}
-prerendered : Shape coordinates -> Shape coordinates
+prerendered : Shape -> Shape
 prerendered =
     entity >> Entity >> Shape 0 0 0 0 0 0 1 1
 
@@ -1824,7 +1824,7 @@ them as a group. Maybe you want to put a bunch of stars in the sky:
             ]
 
 -}
-group : List (Shape coordinates) -> Shape coordinates
+group : List Shape -> Shape
 group shapes =
     Shape 0 0 0 0 0 0 1 1 (Group shapes)
 
@@ -1839,7 +1839,7 @@ z-axis to form a 3D cylinder. The extruded form is
 centered around the xy-plane.
 
 -}
-extrude : Number -> Shape coordinates -> Shape coordinates
+extrude : Number -> Shape -> Shape
 extrude h shape =
     case shape of
         Shape x y z rr rp ry s a (Group shapes) ->
@@ -1882,7 +1882,7 @@ This will create a flat circle "pulled up" (or "extruded") along the
 z-axis to form a 3D cylinder.
 
 -}
-pullUp : Number -> Shape coordinates -> Shape coordinates
+pullUp : Number -> Shape -> Shape
 pullUp h shape =
     case shape of
         Shape x y z rr rp ry s a (Group shapes) ->
@@ -1926,7 +1926,7 @@ pullUp h shape =
 You can use [`scale`](#scale) to make the words bigger or smaller.
 
 -}
-words : Color -> String -> Shape coordinates
+words : Color -> String -> Shape
 words color string =
     Shape 0 0 0 0 0 0 1 1 (Words color string)
 
@@ -1952,7 +1952,7 @@ words color string =
             ]
 
 -}
-move : Number -> Number -> Number -> Shape coordinates -> Shape coordinates
+move : Number -> Number -> Number -> Shape -> Shape
 move dx dy dz (Shape x y z rr rp ry s o f) =
     Shape (x + dx) (y + dy) (z + dz) rr rp ry s o f
 
@@ -1973,7 +1973,7 @@ moves back and forth:
 Using `moveX` feels a bit nicer here because the movement may be positive or negative.
 
 -}
-moveX : Number -> Shape coordinates -> Shape coordinates
+moveX : Number -> Shape -> Shape
 moveX dx (Shape x y z rr rp ry s o f) =
     Shape (x + dx) y z rr rp ry s o f
 
@@ -1998,14 +1998,14 @@ Using `moveY` feels a bit nicer when setting things relative to the bottom or
 top of the screen, since the values are negative sometimes.
 
 -}
-moveY : Number -> Shape coordinates -> Shape coordinates
+moveY : Number -> Shape -> Shape
 moveY dy (Shape x y z rr rp ry s o f) =
     Shape x (y + dy) z rr rp ry s o f
 
 
 {-| Move the `z` coordinate of a shape by some amount:
 -}
-moveZ : Number -> Shape coordinates -> Shape coordinates
+moveZ : Number -> Shape -> Shape
 moveZ dz (Shape x y z rr rp ry s o f) =
     Shape x y (z + dz) rr rp ry s o f
 
@@ -2022,7 +2022,7 @@ be larger, you could say:
             ]
 
 -}
-scale : Number -> Shape coordinates -> Shape coordinates
+scale : Number -> Shape -> Shape
 scale ns (Shape x y z rr rp ry s o f) =
     Shape x y z rr rp ry (s * ns) o f
 
@@ -2041,7 +2041,7 @@ The degrees go **counter-clockwise** to match the direction of the
 [unit circle](https://en.wikipedia.org/wiki/Unit_circle).
 
 -}
-rotate : Number -> Shape coordinates -> Shape coordinates
+rotate : Number -> Shape -> Shape
 rotate da (Shape x y z rr rp ry s o f) =
     Shape x y z (rr + da) rp ry s o f
 
@@ -2059,7 +2059,7 @@ rotate da (Shape x y z rr rp ry s o f) =
     Search Wikipedia for "roll, pitch, yaw" to find out why it is called "roll". ;)
 
 -}
-roll : Number -> Shape coordinates -> Shape coordinates
+roll : Number -> Shape -> Shape
 roll dr (Shape x y z rr rp ry s o f) =
     Shape x y z (rr + dr) rp ry s o f
 
@@ -2077,7 +2077,7 @@ roll dr (Shape x y z rr rp ry s o f) =
     Search Wikipedia for "roll, pitch, yaw" to find out why it is called "pitch". ;)
 
 -}
-pitch : Number -> Shape coordinates -> Shape coordinates
+pitch : Number -> Shape -> Shape
 pitch dp (Shape x y z rr rp ry s o f) =
     Shape x y z rr (rp + dp) ry s o f
 
@@ -2095,7 +2095,7 @@ pitch dp (Shape x y z rr rp ry s o f) =
     Search Wikipedia for "roll, pitch, yaw" to find out why it is called "yaw". ;)
 
 -}
-yaw : Number -> Shape coordinates -> Shape coordinates
+yaw : Number -> Shape -> Shape
 yaw dy (Shape x y z rr rp ry s o f) =
     Shape x y z rr rp (ry + dy) s o f
 
@@ -2118,7 +2118,7 @@ The number has to be between `0` and `1`, where `0` is totally transparent
 and `1` is completely solid.
 
 -}
-fade : Number -> Shape coordinates -> Shape coordinates
+fade : Number -> Shape -> Shape
 fade o (Shape x y z rr rp ry s _ f) =
     Shape x y z rr rp ry s o f
 
@@ -2391,7 +2391,7 @@ colorClamp number =
 
 {-| Extracts the position from any shape.
 -}
-center : Shape coordinates -> ( Number, Number, Number )
+center : Shape -> ( Number, Number, Number )
 center (Shape x y z _ _ _ _ _ _) =
     ( x, y, z )
 
@@ -2399,7 +2399,7 @@ center (Shape x y z _ _ _ _ _ _) =
 {-| Calculates the extent from origin (radius) of a sphere that roughly circumscribes the (group of) shape(s).
 TODO: Needs a refactor where offset centers are taken into account within a group.
 -}
-extent : Shape coordinates -> Number
+extent : Shape -> Number
 extent (Shape _ _ _ _ _ _ _ _ form) =
     case form of
         Circle _ size ->
@@ -2502,7 +2502,7 @@ extent (Shape _ _ _ _ _ _ _ _ form) =
 means from the center of the object to its edge (a "radius"), so it can directly
 be used in calculations from the origin of the objects.
 -}
-extents : Shape coordinates -> ( Number, Number, Number )
+extents : Shape -> ( Number, Number, Number )
 extents (Shape _ _ _ _ _ _ _ _ form) =
     case form of
         Circle _ size ->
@@ -2622,7 +2622,7 @@ type alias View =
     }
 
 
-render : Camera -> { screen : Screen, font : Maybe Font } -> List (Shape WorldCoordinates) -> Html.Html Msg
+render : Camera -> { screen : Screen, font : Maybe Font } -> List Shape -> Html.Html Msg
 render cam { screen, font } shapes =
     Html.div
         [ Touch.onMove TouchMove
@@ -2682,12 +2682,12 @@ camera cam =
                 }
 
 
-withColor : Color -> Mesh coordinates { a | normals : () } -> Entity coordinates
+withColor : Color -> Mesh WorldCoordinates { a | normals : () } -> Entity WorldCoordinates
 withColor color =
     withMaterial { color = color, roughness = 0.4 }
 
 
-withMaterial : { color : Color, roughness : Number } -> Mesh coordinates { a | normals : () } -> Entity coordinates
+withMaterial : { color : Color, roughness : Number } -> Mesh WorldCoordinates { a | normals : () } -> Entity WorldCoordinates
 withMaterial { color, roughness } =
     Scene3d.mesh (material color roughness)
 
@@ -2701,19 +2701,19 @@ material color roughness =
 
 {-| Add a 3D shape to a Scene3D scene as an entity.
 -}
-entity : Shape coordinates -> Entity coordinates
+entity : Shape -> Entity WorldCoordinates
 entity (Shape x y z rr rp ry s alpha form) =
     renderForm Nothing form
         |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
 
 
-entityWithFont : Font -> Shape coordinates -> Entity coordinates
+entityWithFont : Font -> Shape -> Entity WorldCoordinates
 entityWithFont font (Shape x y z rr rp ry s alpha form) =
     renderForm (Just font) form
         |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
 
 
-renderForm : Maybe Font -> Form coordinates -> Entity coordinates
+renderForm : Maybe Font -> Form -> Entity WorldCoordinates
 renderForm font form =
     case form of
         Group shapes ->
@@ -2779,7 +2779,7 @@ renderForm font form =
 -- RENDER GROUP
 
 
-renderGroup : Maybe Font -> List (Shape coordinates) -> Entity coordinates
+renderGroup : Maybe Font -> List Shape -> Entity WorldCoordinates
 renderGroup font shapes =
     case font of
         Nothing ->
@@ -2797,13 +2797,13 @@ renderGroup font shapes =
 -- RENDER CIRCLE AND OVAL
 
 
-renderCircle : Color -> Number -> Entity coordinates
+renderCircle : Color -> Number -> Entity WorldCoordinates
 renderCircle color radius =
     Shape.circle (radius / 100)
         |> withColor color
 
 
-renderCylinder : Material -> Number -> Number -> Entity coordinates
+renderCylinder : Material -> Number -> Number -> Entity WorldCoordinates
 renderCylinder { color, roughness } radius height =
     Cylinder3d.centeredOn Point3d.origin
         Direction3d.z
@@ -2813,7 +2813,7 @@ renderCylinder { color, roughness } radius height =
         |> Scene3d.cylinder (material color roughness)
 
 
-renderCone : Material -> Number -> Number -> Entity coordinates
+renderCone : Material -> Number -> Number -> Entity WorldCoordinates
 renderCone { color, roughness } radius height =
     Cone3d.along Axis3d.z
         { base = Length.centimeters 0
@@ -2823,7 +2823,7 @@ renderCone { color, roughness } radius height =
         |> Scene3d.cone (material color roughness)
 
 
-renderTriangle : Color -> Number -> Entity coordinates
+renderTriangle : Color -> Number -> Entity WorldCoordinates
 renderTriangle color s =
     Shape.triangle (s / 100)
         |> withColor color
@@ -2833,7 +2833,7 @@ renderTriangle color s =
 -- RENDER RECTANGLE AND IMAGE
 
 
-renderRectangle : Color -> Number -> Number -> Entity coordinates
+renderRectangle : Color -> Number -> Number -> Entity WorldCoordinates
 renderRectangle color w h =
     Shape.rectangle (w / 100) (h / 100)
         |> withColor color
@@ -2843,7 +2843,7 @@ renderRectangle color w h =
 -- RENDER POLYGON
 
 
-renderPolygon : Color -> List ( Number, Number ) -> Entity coordinates
+renderPolygon : Color -> List ( Number, Number ) -> Entity WorldCoordinates
 renderPolygon color points =
     points
         |> Array.fromList
@@ -2859,7 +2859,7 @@ renderPolygon color points =
 
 
 
---renderExtrudedPolygon : Color -> Number -> List (Number, Number) -> Entity coordinates
+--renderExtrudedPolygon : Color -> Number -> List (Number, Number) -> Entity WorldCoordinates
 
 
 addPoint : ( Float, Float ) -> String -> String
@@ -2871,7 +2871,7 @@ addPoint ( x, y ) str =
 -- RENDER SPHERE
 
 
-renderSphere : Material -> Number -> Entity coordinates
+renderSphere : Material -> Number -> Entity WorldCoordinates
 renderSphere { color, roughness } radius =
     Sphere3d.withRadius (Length.centimeters radius) Point3d.origin
         |> Scene3d.sphere (material color roughness)
@@ -2881,7 +2881,7 @@ renderSphere { color, roughness } radius =
 -- RENDER BLOCK
 
 
-renderBlock : Material -> Number -> Number -> Number -> Entity coordinates
+renderBlock : Material -> Number -> Number -> Number -> Entity WorldCoordinates
 renderBlock { color, roughness } w h d =
     let
         rw =
@@ -2908,7 +2908,7 @@ renderBlock { color, roughness } w h d =
 -- RENDER SNAKE
 
 
-renderSnake : Color -> List ( Number, Number, Number ) -> Entity coordinates
+renderSnake : Color -> List ( Number, Number, Number ) -> Entity WorldCoordinates
 renderSnake color points =
     points
         |> List.map (\( x, y, z ) -> Point3d.centimeters x y z)
@@ -2921,7 +2921,7 @@ renderSnake color points =
 -- RENDER PRISM
 
 
-renderPrism : Color -> Number -> Number -> Entity coordinates
+renderPrism : Color -> Number -> Number -> Entity WorldCoordinates
 renderPrism color size height =
     let
         s =
@@ -2981,7 +2981,7 @@ renderPrism color size height =
 -- RENDER WALL
 
 
-renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity coordinates
+renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity WorldCoordinates
 renderWall color height points =
     TriangularMesh.strip
         (points
@@ -2998,7 +2998,7 @@ renderWall color height points =
 -- RENDER OBJECT
 
 
-renderObject : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Entity coordinates
+renderObject : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Entity WorldCoordinates
 renderObject color vertices faces =
     let
         vertexToPoint ( x, y, z ) =
@@ -3017,7 +3017,7 @@ renderObject color vertices faces =
 -- RENDER WORDS
 
 
-renderWords : Font -> Color -> String -> Entity coordinates
+renderWords : Font -> Color -> String -> Entity WorldCoordinates
 renderWords font color text =
     Scene3d.Mesh.texturedFacets (mesh text)
         |> Scene3d.mesh (Material.texturedColor font)
@@ -3076,7 +3076,7 @@ type alias Material =
     { color : Color, roughness : Number }
 
 
-transform : Translation -> Rotation -> Scale -> Entity coordinates -> Entity coordinates
+transform : Translation -> Rotation -> Scale -> Entity WorldCoordinates -> Entity WorldCoordinates
 transform t r s =
     Scene3d.rotateAround Axis3d.x (Angle.degrees r.x)
         >> Scene3d.rotateAround Axis3d.y (Angle.degrees r.y)
