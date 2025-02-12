@@ -19,7 +19,7 @@ module Eigenwijs.Playground3d exposing
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
     , networkGame, networkGameWithCamera, Connection
-    , isometric, eyesAt, lookAt
+    , isometric, eyesAt, lookAt, pan, tilt, zoom
     , center, extent, extents
     )
 
@@ -142,7 +142,7 @@ The following primitives work in a (slightly) different way:
 
 # Playground Cameras
 
-@docs isometric, eyesAt, lookAt
+@docs isometric, eyesAt, lookAt, pan, tilt, zoom
 
 
 # Calculations
@@ -1160,6 +1160,7 @@ type CameraMode
     = FirstPerson (Point3d Meters WorldCoordinates) Angle
     | Isometric Length Length
     | Orbit Number Number Number Angle
+    | PanTiltZoomFov (Point3d Meters WorldCoordinates) Angle Angle Number Angle
 
 
 {-| Create an isometric camera
@@ -1181,6 +1182,70 @@ eyesAt x y z =
 lookAt : Number -> Number -> Number -> Camera -> Camera
 lookAt x y z cam =
     { cam | target = Point3d.centimeters x y z }
+
+
+{-| Pan the camera for a specified number of degrees.
+-}
+pan : Number -> Camera -> Camera
+pan angle cam =
+    { cam
+        | mode =
+            case cam.mode of
+                FirstPerson position fov ->
+                    PanTiltZoomFov position (Angle.degrees angle) (Angle.degrees 0) 1 fov
+
+                Isometric distance height ->
+                    PanTiltZoomFov Point3d.origin (Angle.degrees angle) (Angle.degrees 0) 1 (Angle.degrees 40)
+
+                Orbit azymuth elevation distance fov ->
+                    PanTiltZoomFov (Point3d.origin |> Point3d.translateIn Direction3d.x (Length.meters -distance)) (Angle.degrees angle) (Angle.degrees 0) 1 fov
+
+                PanTiltZoomFov position p t z fov ->
+                    PanTiltZoomFov position (Angle.degrees angle) t z fov
+    }
+
+
+{-| Tilt the camera for a specified number of degrees.
+-}
+tilt : Number -> Camera -> Camera
+tilt angle cam =
+    { cam
+        | mode =
+            case cam.mode of
+                FirstPerson position fov ->
+                    PanTiltZoomFov position (Angle.degrees 0) (Angle.degrees angle) 1 fov
+
+                Isometric distance height ->
+                    PanTiltZoomFov Point3d.origin (Angle.degrees 0) (Angle.degrees angle) 1 (Angle.degrees 40)
+
+                Orbit azymuth elevation distance fov ->
+                    PanTiltZoomFov (Point3d.origin |> Point3d.translateIn Direction3d.x (Length.meters -distance)) (Angle.degrees 0) (Angle.degrees angle) 1 fov
+
+                PanTiltZoomFov position p t z fov ->
+                    PanTiltZoomFov position p (Angle.degrees angle) z fov
+    }
+
+
+{-| Let the camera zoom in (factor > 1) or out (factor < 1, while greater than 0 -
+if not, the zoom factor will be just 1).
+-}
+zoom : Number -> Camera -> Camera
+zoom factor cam =
+    { cam
+        | mode =
+            case cam.mode of
+                FirstPerson position fov ->
+                    PanTiltZoomFov position (Angle.degrees 0) (Angle.degrees 0) factor fov
+
+                Isometric distance height ->
+                    PanTiltZoomFov Point3d.origin (Angle.degrees 0) (Angle.degrees 0) factor (Angle.degrees 40)
+
+                Orbit azymuth elevation distance fov ->
+                    PanTiltZoomFov (Point3d.origin |> Point3d.translateIn Direction3d.x (Length.meters -distance)) (Angle.degrees 0) (Angle.degrees 0) factor fov
+
+                PanTiltZoomFov position p t z fov ->
+                    PanTiltZoomFov position p t factor fov
+    }
 
 
 {-| Playground message type
@@ -2679,6 +2744,26 @@ camera cam =
                         , distance = Length.centimeters distance
                         }
                 , verticalFieldOfView = fov
+                }
+
+        PanTiltZoomFov position p t z fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.lookAt
+                        { eyePoint = position
+                        , focalPoint =
+                            position
+                                |> Point3d.translateIn Direction3d.positiveX (Length.meters 1)
+                                |> Point3d.rotateAround Axis3d.z p
+                                |> Point3d.rotateAround Axis3d.y t
+                        , upDirection = Direction3d.positiveZ
+                        }
+                , verticalFieldOfView =
+                    if z > 0 then
+                        Angle.degrees (Angle.inDegrees fov / z)
+
+                    else
+                        fov
                 }
 
 
