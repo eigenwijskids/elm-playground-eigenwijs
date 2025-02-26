@@ -3193,8 +3193,6 @@ renderExtrudedPolygon color height points =
         sideMesh =
             TriangularMesh.indexed sideVertices sideIndices
                 |> Scene3d.Mesh.indexedFacets
-                |> Scene3d.Mesh.cullBackFaces
-
         -- Create top and bottom faces using triangulation
         triangulatedFaces =
             triangulatePolygon points
@@ -3204,14 +3202,13 @@ renderExtrudedPolygon color height points =
                 |> List.map
                     (\( p1, p2, p3 ) ->
                         ( Point3d.centimeters (Tuple.first p1) (Tuple.second p1) (-height / 2)
-                        , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) (-height / 2)
                         , Point3d.centimeters (Tuple.first p3) (Tuple.second p3) (-height / 2)
+                        , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) (-height / 2)
                         )
                     )
                 |> TriangularMesh.triangles
                 |> Scene3d.Mesh.indexedFacets
                 |> Scene3d.Mesh.cullBackFaces
-
         topFaces =
             triangulatedFaces
                 |> List.map
