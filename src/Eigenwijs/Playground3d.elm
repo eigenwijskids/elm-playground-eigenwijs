@@ -1589,6 +1589,7 @@ type Form
     | Block Color Number Number Number
     | Prism Color Number Number
     | Wall Color Number (List ( Number, Number, Number ))
+    | ExtrudedPolygon Color Number (List ( Number, Number ))
     | Words Color String
     | Object Color (List ( Number, Number, Number )) (List ( Int, Int, Int ))
     | Entity (Entity WorldCoordinates)
@@ -1929,8 +1930,9 @@ extrude h shape =
         Shape x y z rr rp ry s a (Triangle c size) ->
             Shape x y z rr rp ry s a (Prism c size h)
 
-        --Shape x y z rr rp ry s a (Polygon c points) ->
-        --    Shape x y z rr rp ry s a (ExtrudedPolygon c h points)
+        Shape x y z rr rp ry s a (Polygon c points) ->
+            Shape x y z rr rp ry s a (ExtrudedPolygon c h points)
+
         Shape x y z rr rp ry s a (Snake c p) ->
             Shape x y z rr rp ry s a (Wall c h p)
 
@@ -1974,6 +1976,9 @@ pullUp h shape =
 
         Shape x y z rr rp ry s a (Snake c p) ->
             Shape x y z rr rp ry s a (Wall c h (p |> List.map (\( px, py, pz ) -> ( px, py, pz + h / 2 ))))
+
+        Shape x y z rr rp ry s a (Polygon c points) ->
+            Shape x y (z + h / 2) rr rp ry s a (ExtrudedPolygon c h points)
 
         _ ->
             shape
@@ -2562,6 +2567,20 @@ extent (Shape _ _ _ _ _ _ _ _ form) =
         Entity _ ->
             0
 
+        ExtrudedPolygon _ height points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            max (max (maxx - minx) (maxy - miny)) height / 2
+
 
 {-| Calculates the extents per axis of any (group of) shape(s). Extent in this case
 means from the center of the object to its edge (a "radius"), so it can directly
@@ -2674,6 +2693,20 @@ extents (Shape _ _ _ _ _ _ _ _ form) =
 
         Entity _ ->
             ( 0, 0, 0 )
+
+        ExtrudedPolygon _ height points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, height / 2 )
 
 
 
@@ -2857,10 +2890,11 @@ renderForm font form =
         Entity e ->
             e
 
+        ExtrudedPolygon color height points ->
+            renderExtrudedPolygon color height points
 
 
---ExtrudedPolygon color height points ->
---    renderExtrudedPolygon color height points
+
 -- RENDER GROUP
 
 
@@ -2943,8 +2977,100 @@ renderPolygon color points =
         |> Result.withDefault (renderSnake color (points |> List.map (\( x, y ) -> ( x, y, 0 ))))
 
 
+{-| ExtrudedPolygon rendering implementation
+-}
+renderExtrudedPolygon : Color -> Number -> List ( Number, Number ) -> Entity WorldCoordinates
+renderExtrudedPolygon color height points =
+    let
+        -- Convert points to vertices arrays for top and bottom
+        bottomVertices =
+            points
+                |> List.map (\( x, y ) -> Point3d.centimeters x y (-height / 2))
+                |> Array.fromList
 
---renderExtrudedPolygon : Color -> Number -> List (Number, Number) -> Entity WorldCoordinates
+        topVertices =
+            points
+                |> List.map (\( x, y ) -> Point3d.centimeters x y (height / 2))
+                |> Array.fromList
+
+        numPoints =
+            List.length points
+
+        -- Create indices for side faces
+        sideIndices =
+            List.range 0 (numPoints - 1)
+                |> List.map
+                    (\i ->
+                        let
+                            nextI =
+                                if i == numPoints - 1 then
+                                    0
+
+                                else
+                                    i + 1
+                        in
+                        [ ( i, nextI, nextI + numPoints ) -- First triangle
+                        , ( i, nextI + numPoints, i + numPoints ) -- Second triangle
+                        ]
+                    )
+                |> List.concat
+
+        -- Combine vertices for sides
+        sideVertices =
+            Array.append bottomVertices topVertices
+
+        -- Create triangular mesh for sides
+        sideMesh =
+            TriangularMesh.indexed sideVertices sideIndices
+                |> Scene3d.Mesh.indexedFacets
+                |> Scene3d.Mesh.cullBackFaces
+
+        -- Create top and bottom faces using triangulation
+        faces =
+            case
+                points
+                    |> List.map (\( x, y ) -> Point2d.centimeters x y)
+                    |> Array.fromList
+                    |> DelaunayTriangulation2d.fromPoints
+            of
+                Ok triangulation ->
+                    let
+                        bottomFaces =
+                            triangulation
+                                |> DelaunayTriangulation2d.toMesh
+                                |> TriangularMesh.mapVertices
+                                    (\p ->
+                                        Point3d.centimeters
+                                            (Point2d.unwrap p |> .x)
+                                            (Point2d.unwrap p |> .y)
+                                            (-height / 2)
+                                    )
+                                |> Scene3d.Mesh.indexedFacets
+                                |> Scene3d.Mesh.cullBackFaces
+
+                        topFaces =
+                            triangulation
+                                |> DelaunayTriangulation2d.toMesh
+                                |> TriangularMesh.mapVertices
+                                    (\p ->
+                                        Point3d.centimeters
+                                            (Point2d.unwrap p |> .x)
+                                            (Point2d.unwrap p |> .y)
+                                            (height / 2)
+                                    )
+                                |> Scene3d.Mesh.indexedFacets
+                                |> Scene3d.Mesh.cullBackFaces
+                    in
+                    Scene3d.group
+                        [ Scene3d.mesh (Material.color color) bottomFaces
+                        , Scene3d.mesh (Material.color color) topFaces
+                        , Scene3d.mesh (Material.color color) sideMesh
+                        ]
+
+                Err _ ->
+                    Scene3d.group []
+    in
+    faces
 
 
 addPoint : ( Float, Float ) -> String -> String
