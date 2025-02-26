@@ -2964,17 +2964,187 @@ renderRectangle color w h =
 
 renderPolygon : Color -> List ( Number, Number ) -> Entity WorldCoordinates
 renderPolygon color points =
-    points
-        |> Array.fromList
-        |> Array.map (\( x, y ) -> Point2d.centimeters x y)
-        |> DelaunayTriangulation2d.fromPoints
-        |> Result.map
-            (DelaunayTriangulation2d.toMesh
-                >> TriangularMesh.mapVertices (Point2d.coordinates >> (\( x, y ) -> Point3d.xyOn SketchPlane3d.xy x y))
-                >> Scene3d.Mesh.indexedFacets
-                >> withColor color
+    triangulatePolygon points
+        |> List.map
+            (\( p1, p2, p3 ) ->
+                ( Point3d.centimeters (Tuple.first p1) (Tuple.second p1) 0
+                , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) 0
+                , Point3d.centimeters (Tuple.first p3) (Tuple.second p3) 0
+                )
             )
-        |> Result.withDefault (renderSnake color (points |> List.map (\( x, y ) -> ( x, y, 0 ))))
+        |> TriangularMesh.triangles
+        |> Scene3d.Mesh.indexedFacets
+        |> Scene3d.Mesh.cullBackFaces
+        |> Scene3d.mesh (Material.color color)
+
+
+
+-- Helper functions for triangulation
+
+
+type alias EarResult =
+    { p1 : ( Number, Number )
+    , p2 : ( Number, Number )
+    , p3 : ( Number, Number )
+    , remaining : List ( Number, Number )
+    }
+
+
+type alias Triple =
+    { p1 : ( Number, Number )
+    , p2 : ( Number, Number )
+    , p3 : ( Number, Number )
+    }
+
+
+triangulatePolygon : List ( Number, Number ) -> List ( ( Number, Number ), ( Number, Number ), ( Number, Number ) )
+triangulatePolygon points =
+    case points of
+        [] ->
+            []
+
+        [ _ ] ->
+            []
+
+        [ _, _ ] ->
+            []
+
+        _ ->
+            if isPolygonClockwise points then
+                List.reverse points |> earClip [] |> List.reverse
+
+            else
+                earClip [] points
+
+
+earClip : List ( ( Number, Number ), ( Number, Number ), ( Number, Number ) ) -> List ( Number, Number ) -> List ( ( Number, Number ), ( Number, Number ), ( Number, Number ) )
+earClip triangles points =
+    if List.length points < 3 then
+        triangles
+
+    else
+        case findEar points of
+            Just result ->
+                earClip (( result.p1, result.p2, result.p3 ) :: triangles) result.remaining
+
+            Nothing ->
+                triangles
+
+
+findEar : List ( Number, Number ) -> Maybe EarResult
+findEar points =
+    let
+        len =
+            List.length points
+
+        -- Helper function to get three consecutive points
+        getTriple : Int -> { triple : Triple, remaining : List ( Number, Number ) }
+        getTriple i =
+            let
+                p1 =
+                    Maybe.withDefault ( 0, 0 ) (List.head (List.drop i points))
+
+                p2 =
+                    Maybe.withDefault ( 0, 0 ) (List.head (List.drop ((i + 1) |> modBy len) points))
+
+                p3 =
+                    Maybe.withDefault ( 0, 0 ) (List.head (List.drop ((i + 2) |> modBy len) points))
+
+                remaining =
+                    if i == len - 1 then
+                        -- Als we bij het laatste punt zijn, verwijder het eerste punt
+                        List.drop 1 points
+
+                    else if i == len - 2 then
+                        -- Als we bij het voorlaatste punt zijn, verwijder het laatste punt
+                        List.take (len - 1) points
+
+                    else
+                        -- Anders, verwijder het middelste punt
+                        List.take (i + 1) points ++ List.drop (i + 2) points
+            in
+            { triple = { p1 = p1, p2 = p2, p3 = p3 }
+            , remaining = remaining
+            }
+    in
+    List.range 0 (len - 1)
+        |> List.map getTriple
+        |> List.filter (\{ triple } -> isEar triple points)
+        |> List.head
+        |> Maybe.map
+            (\{ triple, remaining } ->
+                { p1 = triple.p1
+                , p2 = triple.p2
+                , p3 = triple.p3
+                , remaining = remaining
+                }
+            )
+
+
+isPolygonClockwise : List ( Number, Number ) -> Bool
+isPolygonClockwise points =
+    let
+        -- Calculate the signed area of the polygon
+        signedArea =
+            List.map2 (\( x1, y1 ) ( x2, y2 ) -> (x2 - x1) * (y2 + y1))
+                points
+                (List.drop 1 points ++ List.take 1 points)
+                |> List.sum
+    in
+    signedArea > 0
+
+
+isCounterClockwise : ( Number, Number ) -> ( Number, Number ) -> ( Number, Number ) -> Bool
+isCounterClockwise ( x1, y1 ) ( x2, y2 ) ( x3, y3 ) =
+    let
+        -- Calculate the signed area of the triangle
+        signedArea =
+            (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)
+    in
+    signedArea > 0
+
+
+pointInTriangle : ( Number, Number ) -> ( ( Number, Number ), ( Number, Number ), ( Number, Number ) ) -> Bool
+pointInTriangle ( px, py ) ( ( x1, y1 ), ( x2, y2 ), ( x3, y3 ) ) =
+    let
+        -- Use barycentric coordinates with epsilon for numerical stability
+        epsilon =
+            1.0e-10
+
+        denominator =
+            (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+
+        a =
+            ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / denominator
+
+        b =
+            ((y3 - y1) * (px - x3) + (x1 - x2) * (py - y3)) / denominator
+
+        c =
+            1 - a - b
+    in
+    a > -epsilon && b > -epsilon && c > -epsilon
+
+
+isEar : Triple -> List ( Number, Number ) -> Bool
+isEar triple points =
+    -- Check first whether the triangle is counter-clockwise
+    if not (isCounterClockwise triple.p1 triple.p2 triple.p3) then
+        False
+
+    else
+        -- Check whether no other points are in the triangle
+        points
+            |> List.filter
+                (\p ->
+                    p
+                        /= triple.p1
+                        && p
+                        /= triple.p2
+                        && p
+                        /= triple.p3
+                )
+            |> List.all (\p -> not (pointInTriangle p ( triple.p1, triple.p2, triple.p3 )))
 
 
 {-| ExtrudedPolygon rendering implementation
@@ -3026,51 +3196,40 @@ renderExtrudedPolygon color height points =
                 |> Scene3d.Mesh.cullBackFaces
 
         -- Create top and bottom faces using triangulation
-        faces =
-            case
-                points
-                    |> List.map (\( x, y ) -> Point2d.centimeters x y)
-                    |> Array.fromList
-                    |> DelaunayTriangulation2d.fromPoints
-            of
-                Ok triangulation ->
-                    let
-                        bottomFaces =
-                            triangulation
-                                |> DelaunayTriangulation2d.toMesh
-                                |> TriangularMesh.mapVertices
-                                    (\p ->
-                                        Point3d.centimeters
-                                            (Point2d.unwrap p |> .x)
-                                            (Point2d.unwrap p |> .y)
-                                            (-height / 2)
-                                    )
-                                |> Scene3d.Mesh.indexedFacets
-                                |> Scene3d.Mesh.cullBackFaces
+        triangulatedFaces =
+            triangulatePolygon points
 
-                        topFaces =
-                            triangulation
-                                |> DelaunayTriangulation2d.toMesh
-                                |> TriangularMesh.mapVertices
-                                    (\p ->
-                                        Point3d.centimeters
-                                            (Point2d.unwrap p |> .x)
-                                            (Point2d.unwrap p |> .y)
-                                            (height / 2)
-                                    )
-                                |> Scene3d.Mesh.indexedFacets
-                                |> Scene3d.Mesh.cullBackFaces
-                    in
-                    Scene3d.group
-                        [ Scene3d.mesh (Material.color color) bottomFaces
-                        , Scene3d.mesh (Material.color color) topFaces
-                        , Scene3d.mesh (Material.color color) sideMesh
-                        ]
+        bottomFaces =
+            triangulatedFaces
+                |> List.map
+                    (\( p1, p2, p3 ) ->
+                        ( Point3d.centimeters (Tuple.first p1) (Tuple.second p1) (-height / 2)
+                        , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) (-height / 2)
+                        , Point3d.centimeters (Tuple.first p3) (Tuple.second p3) (-height / 2)
+                        )
+                    )
+                |> TriangularMesh.triangles
+                |> Scene3d.Mesh.indexedFacets
+                |> Scene3d.Mesh.cullBackFaces
 
-                Err _ ->
-                    Scene3d.group []
+        topFaces =
+            triangulatedFaces
+                |> List.map
+                    (\( p1, p2, p3 ) ->
+                        ( Point3d.centimeters (Tuple.first p1) (Tuple.second p1) (height / 2)
+                        , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) (height / 2)
+                        , Point3d.centimeters (Tuple.first p3) (Tuple.second p3) (height / 2)
+                        )
+                    )
+                |> TriangularMesh.triangles
+                |> Scene3d.Mesh.indexedFacets
+                |> Scene3d.Mesh.cullBackFaces
     in
-    faces
+    Scene3d.group
+        [ Scene3d.mesh (Material.color color) bottomFaces
+        , Scene3d.mesh (Material.color color) topFaces
+        , Scene3d.mesh (Material.color color) sideMesh
+        ]
 
 
 addPoint : ( Float, Float ) -> String -> String
