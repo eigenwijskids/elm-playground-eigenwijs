@@ -3152,7 +3152,6 @@ isEar triple points =
 renderExtrudedPolygon : Color -> Number -> List ( Number, Number ) -> Entity WorldCoordinates
 renderExtrudedPolygon color height points =
     let
-        -- Convert points to vertices arrays for top and bottom
         bottomVertices =
             points
                 |> List.map (\( x, y ) -> Point3d.centimeters x y (-height / 2))
@@ -3166,7 +3165,6 @@ renderExtrudedPolygon color height points =
         numPoints =
             List.length points
 
-        -- Create indices for side faces
         sideIndices =
             List.range 0 (numPoints - 1)
                 |> List.map
@@ -3179,21 +3177,20 @@ renderExtrudedPolygon color height points =
                                 else
                                     i + 1
                         in
-                        [ ( i, nextI, nextI + numPoints ) -- First triangle
-                        , ( i, nextI + numPoints, i + numPoints ) -- Second triangle
+                        [ ( i, nextI, nextI + numPoints )
+                        , ( i, nextI + numPoints, i + numPoints )
                         ]
                     )
                 |> List.concat
 
-        -- Combine vertices for sides
         sideVertices =
             Array.append bottomVertices topVertices
 
-        -- Create triangular mesh for sides
         sideMesh =
             TriangularMesh.indexed sideVertices sideIndices
                 |> Scene3d.Mesh.indexedFacets
-        -- Create top and bottom faces using triangulation
+
+        -- |> Scene3d.Mesh.cullBackFaces
         triangulatedFaces =
             triangulatePolygon points
 
@@ -3209,6 +3206,7 @@ renderExtrudedPolygon color height points =
                 |> TriangularMesh.triangles
                 |> Scene3d.Mesh.indexedFacets
                 |> Scene3d.Mesh.cullBackFaces
+
         topFaces =
             triangulatedFaces
                 |> List.map
@@ -3223,9 +3221,9 @@ renderExtrudedPolygon color height points =
                 |> Scene3d.Mesh.cullBackFaces
     in
     Scene3d.group
-        [ Scene3d.mesh (Material.color color) bottomFaces
-        , Scene3d.mesh (Material.color color) topFaces
-        , Scene3d.mesh (Material.color color) sideMesh
+        [ Scene3d.mesh (material color 0.4) bottomFaces
+        , Scene3d.mesh (material color 0.4) topFaces
+        , Scene3d.mesh (material color 0.4) sideMesh
         ]
 
 
