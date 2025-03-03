@@ -2745,7 +2745,7 @@ so it can access the WebAudio API. Use in your game program as follows:
 
     import Eigenwijs.Playground
 
-    port audioPort : Eigenwijs.Playground.AudioPort msg
+    port toWebAudio : Eigenwijs.Playground.AudioPort msg
 
 -}
 type alias AudioPort msg =
