@@ -1,6 +1,6 @@
 module Eigenwijs.Playground exposing
     ( picture, animation, game
-    , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, svgPath
+    , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, lineBetween, svgPath
     , words, withFont
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
@@ -34,7 +34,7 @@ module Eigenwijs.Playground exposing
 
 # Shapes
 
-@docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, svgPath
+@docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, lineBetween, svgPath
 
 
 # Words
@@ -2812,3 +2812,50 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
 svgPath : Color -> String -> Shape msg
 svgPath color p =
     Shape 0 0 0 1 1 1 Nothing (SvgPath color p)
+
+
+{-| Draw a line between two points with specified thickness
+-}
+lineBetween : ( Number, Number ) -> ( Number, Number ) -> Color -> Number -> Shape msg
+lineBetween ( x1, y1 ) ( x2, y2 ) color thickness =
+    let
+        dx =
+            x2 - x1
+
+        dy =
+            y2 - y1
+
+        length =
+            sqrt (dx * dx + dy * dy)
+
+        angle =
+            atan2 dy dx * 180 / pi
+
+        -- direct naar graden omzetten
+    in
+    rectangle color length thickness
+        |> move (x1 + dx / 2) (y1 + dy / 2)
+        |> rotate angle
+
+
+{-| Calculate arctangent of y/x, taking into account which quadrant the point is in
+-}
+atan2 : Number -> Number -> Number
+atan2 y x =
+    if x > 0 then
+        atan (y / x)
+
+    else if x < 0 && y >= 0 then
+        atan (y / x) + pi
+
+    else if x < 0 && y < 0 then
+        atan (y / x) - pi
+
+    else if x == 0 && y > 0 then
+        pi / 2
+
+    else if x == 0 && y < 0 then
+        -pi / 2
+
+    else
+        0
