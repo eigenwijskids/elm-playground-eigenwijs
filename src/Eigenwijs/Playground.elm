@@ -1,6 +1,6 @@
 module Eigenwijs.Playground exposing
     ( picture, animation, game
-    , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
+    , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, svgPath
     , words, withFont
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
@@ -34,7 +34,7 @@ module Eigenwijs.Playground exposing
 
 # Shapes
 
-@docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
+@docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, svgPath
 
 
 # Words
@@ -1095,6 +1095,7 @@ type Form msg
     | Ngon Color Int Number
     | Polygon Color (List ( Number, Number ))
     | Image Number Number String
+    | SvgPath Color String
     | Words Color Font String
     | Group (List (Shape msg))
 
@@ -1487,10 +1488,10 @@ So in the example below, the circle is moved halfway on the path:
 
 -}
 moveAlong : List ( Number, Number ) -> Number -> Shape msg -> Shape msg
-moveAlong path amount ((Shape x y a sx sy o n f) as shape) =
+moveAlong coords amount ((Shape x y a sx sy o n f) as shape) =
     let
         totalLength =
-            case path of
+            case coords of
                 ( x1, y1 ) :: rest ->
                     rest
                         |> List.foldl
@@ -1504,7 +1505,7 @@ moveAlong path amount ((Shape x y a sx sy o n f) as shape) =
                     0
 
         ( nx, ny ) =
-            case path of
+            case coords of
                 [] ->
                     ( 0, 0 )
 
@@ -1544,10 +1545,10 @@ back at the beginning of the path. In this way you can keep looping from 0 to 1
 and continue from 0 again.
 -}
 moveAlongLoop : List ( Number, Number ) -> Number -> Shape msg -> Shape msg
-moveAlongLoop path amount shape =
+moveAlongLoop coords amount shape =
     let
         loop =
-            case path of
+            case coords of
                 [] ->
                     []
 
@@ -2236,6 +2237,9 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                 |> Polygon2d.convexHull
                 |> transform
 
+        SvgPath _ _ ->
+            Polygon2d.singleLoop []
+
 
 {-| Returns the position of a shape, as a pair (x, y).
 -}
@@ -2333,6 +2337,9 @@ extent (Shape _ _ _ _ _ _ _ form) =
 
         Group shapes ->
             List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
+
+        SvgPath _ segments ->
+            0
 
 
 transformCoordinates x y a sx sy ( cx, cy ) =
@@ -2503,6 +2510,9 @@ renderShape (Shape x y angle sx sy alpha msg form) =
         Words color font string ->
             renderWords color font string x y angle sx sy alpha msg
 
+        SvgPath color segments ->
+            renderPath color segments x y angle sx sy alpha msg
+
         Group shapes ->
             g (transform (renderTransform x y angle sx sy) :: renderAlpha alpha ++ renderOnClick msg)
                 (List.map renderShape shapes)
@@ -2632,6 +2642,23 @@ renderPolygon color coordinates x y angle sx sy alpha msg =
 addPoint : ( Float, Float ) -> String -> String
 addPoint ( x, y ) str =
     str ++ String.fromFloat x ++ "," ++ String.fromFloat -y ++ " "
+
+
+
+-- RENDER PATH
+
+
+renderPath : Color -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderPath color p x y angle sx sy alpha msg =
+    Svg.path
+        (d p
+            :: stroke (renderColor color)
+            :: fill "none"
+            :: transform (renderTransform x y angle sx sy)
+            :: renderAlpha alpha
+            ++ renderOnClick msg
+        )
+        []
 
 
 
@@ -2778,3 +2805,10 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
         , update = update
         , subscriptions = gameSubscriptions
         }
+
+
+{-| Create a path from svg path string
+-}
+svgPath : Color -> String -> Shape msg
+svgPath color p =
+    Shape 0 0 0 1 1 1 Nothing (SvgPath color p)
