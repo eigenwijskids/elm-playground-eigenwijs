@@ -3,9 +3,9 @@ module Eigenwijs.Playground3d exposing
     , Shape, circle, square, rectangle, triangle, polygon, snake
     , sphere, cylinder, cone, cube, block, prism, obj
     , words
-    , move, moveX, moveY, moveZ
+    , move, moveX, moveY, moveZ, moveAlong, moveAlongLoop
     , scale, rotate, roll, pitch, yaw, fade
-    , group, extrude, pullUp, prerendered, withName
+    , group, extrude, pullUp, prerendered
     , Time, spin, wave, zigzag, beginOfTime, secondsBetween
     , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
     , rgb, rgb255, red, orange, yellow, green, blue, purple, brown
@@ -20,9 +20,8 @@ module Eigenwijs.Playground3d exposing
     , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
     , networkGame, networkGameWithCamera, Connection
     , isometric, orbit, eyesAt, lookAt, pan, tilt, zoom
-    , whereIs, center, extent, extents
+    , withName, whereIs, center, extent, extents
     , positionOf
-    , moveAlong, moveAlongLoop
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -68,7 +67,7 @@ The following primitives work in a (slightly) different way:
 
 # Move Shapes
 
-@docs move, moveX, moveY, moveZ
+@docs move, moveX, moveY, moveZ, moveAlong, moveAlongLoop
 
 
 # Customize Shapes
@@ -76,9 +75,9 @@ The following primitives work in a (slightly) different way:
 @docs scale, rotate, roll, pitch, yaw, fade
 
 
-# Groups, extrusion, optimization, naming
+# Groups, extrusion, optimization
 
-@docs group, extrude, pullUp, prerendered, withName
+@docs group, extrude, pullUp, prerendered
 
 
 # Time
@@ -147,7 +146,7 @@ The following primitives work in a (slightly) different way:
 @docs isometric, orbit, eyesAt, lookAt, pan, tilt, zoom
 
 
-# Calculations
+# Naming and calculations
 
 @docs withName, whereIs, center, extent, extents
 @docs positionOf
