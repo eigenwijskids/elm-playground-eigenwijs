@@ -1,6 +1,7 @@
 module Eigenwijs.Playground exposing
     ( picture, animation, game
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, lineBetween, svgPath
+    , withOutline
     , words, withFont
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
@@ -9,7 +10,7 @@ module Eigenwijs.Playground exposing
     , group
     , Time, spin, wave, zigzag, beginOfTime
     , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
-    , Color, rgb, red, orange, yellow, green, blue, purple, brown
+    , Color, rgb, transparent, red, orange, yellow, green, blue, purple, brown
     , lightRed, lightOrange, lightYellow, lightGreen, lightBlue, lightPurple, lightBrown
     , darkRed, darkOrange, darkYellow, darkGreen, darkBlue, darkPurple, darkBrown
     , white, lightGrey, grey, darkGrey, lightCharcoal, charcoal, darkCharcoal, black
@@ -35,6 +36,11 @@ module Eigenwijs.Playground exposing
 # Shapes
 
 @docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, lineBetween, svgPath
+
+
+# Style
+
+@docs withOutline
 
 
 # Words
@@ -79,7 +85,7 @@ module Eigenwijs.Playground exposing
 
 # Colors
 
-@docs Color, rgb, red, orange, yellow, green, blue, purple, brown
+@docs Color, rgb, transparent, red, orange, yellow, green, blue, purple, brown
 
 
 ### Light Colors
@@ -1089,19 +1095,51 @@ type Shape msg
 
 
 type Form msg
-    = Circle Color Number
-    | Oval Color Number Number
-    | Rectangle Color Number Number
-    | Ngon Color Int Number
-    | Polygon Color (List ( Number, Number ))
+    = Circle Color Outline Number
+    | Oval Color Outline Number Number
+    | Rectangle Color Outline Number Number
+    | Ngon Color Outline Int Number
+    | Polygon Color Outline (List ( Number, Number ))
     | Image Number Number String
     | SvgPath Color String
-    | Words Color Font String
+    | Words Color Outline Font String
     | Group (List (Shape msg))
 
 
 type alias Font =
     Maybe String
+
+
+type Outline
+    = NoOutline
+    | Outline Color Float
+
+
+{-| Add an outline to shapes with specified color and thickness.
+-}
+withOutline : Color -> Float -> Shape msg -> Shape msg
+withOutline color thickness ((Shape x y a sx sy o n f) as shape) =
+    case f of
+        Circle c _ r ->
+            Shape x y a sx sy o n (Circle c (Outline color thickness) r)
+
+        Oval c _ w h ->
+            Shape x y a sx sy o n (Oval c (Outline color thickness) w h)
+
+        Rectangle c _ w h ->
+            Shape x y a sx sy o n (Rectangle c (Outline color thickness) w h)
+
+        Ngon c _ i s ->
+            Shape x y a sx sy o n (Ngon c (Outline color thickness) i s)
+
+        Polygon c _ cs ->
+            Shape x y a sx sy o n (Polygon c (Outline color thickness) cs)
+
+        Words c _ ff t ->
+            Shape x y a sx sy o n (Words c (Outline color thickness) ff t)
+
+        _ ->
+            shape
 
 
 {-| Make circles:
@@ -1118,7 +1156,7 @@ the circle.
 -}
 circle : Color -> Number -> Shape msg
 circle color radius =
-    Shape 0 0 0 1 1 1 Nothing (Circle color radius)
+    Shape 0 0 0 1 1 1 Nothing (Circle color NoOutline radius)
 
 
 {-| Make ovals:
@@ -1132,7 +1170,7 @@ is 200 pixels wide and 100 pixels tall.
 -}
 oval : Color -> Number -> Number -> Shape msg
 oval color width height =
-    Shape 0 0 0 1 1 1 Nothing (Oval color width height)
+    Shape 0 0 0 1 1 1 Nothing (Oval color NoOutline width height)
 
 
 {-| Make squares. Here are two squares combined to look like an empty box:
@@ -1151,7 +1189,7 @@ be 80 pixels by 80 pixels.
 -}
 square : Color -> Number -> Shape msg
 square color n =
-    Shape 0 0 0 1 1 1 Nothing (Rectangle color n n)
+    Shape 0 0 0 1 1 1 Nothing (Rectangle color NoOutline n n)
 
 
 {-| Make rectangles. This example makes a red cross:
@@ -1170,7 +1208,7 @@ part of the cross, the thinner and taller part.
 -}
 rectangle : Color -> Number -> Number -> Shape msg
 rectangle color width height =
-    Shape 0 0 0 1 1 1 Nothing (Rectangle color width height)
+    Shape 0 0 0 1 1 1 Nothing (Rectangle color NoOutline width height)
 
 
 {-| Make triangles. So if you wanted to draw the Egyptian pyramids, you could
@@ -1189,7 +1227,7 @@ the pyramid is `200`. Pretty big!
 -}
 triangle : Color -> Number -> Shape msg
 triangle color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color 3 radius)
+    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 3 radius)
 
 
 {-| Make pentagons:
@@ -1207,7 +1245,7 @@ of the five points is 100 pixels.
 -}
 pentagon : Color -> Number -> Shape msg
 pentagon color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color 5 radius)
+    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 5 radius)
 
 
 {-| Make hexagons:
@@ -1227,7 +1265,7 @@ honeycomb pattern!
 -}
 hexagon : Color -> Number -> Shape msg
 hexagon color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color 6 radius)
+    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 6 radius)
 
 
 {-| Make octogons:
@@ -1245,7 +1283,7 @@ from the center.
 -}
 octagon : Color -> Number -> Shape msg
 octagon color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color 8 radius)
+    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 8 radius)
 
 
 {-| Make any shape you want! Here is a very thin triangle:
@@ -1264,7 +1302,7 @@ octagon color radius =
 -}
 polygon : Color -> List ( Number, Number ) -> Shape msg
 polygon color points =
-    Shape 0 0 0 1 1 1 Nothing (Polygon color points)
+    Shape 0 0 0 1 1 1 Nothing (Polygon color NoOutline points)
 
 
 {-| Add some image from the internet:
@@ -1298,7 +1336,7 @@ You can use [`scale`](#scale) to make the words bigger or smaller.
 -}
 words : Color -> String -> Shape msg
 words color string =
-    Shape 0 0 0 1 1 1 Nothing (Words color Nothing string)
+    Shape 0 0 0 1 1 1 Nothing (Words color NoOutline Nothing string)
 
 
 {-| Put shapes together so you can [`move`](#move) and [`rotate`](#rotate)
@@ -1704,8 +1742,8 @@ clickedName n { clickedNames } =
 withFont : String -> Shape msg -> Shape msg
 withFont fontname ((Shape x y a sx sy o n f) as shape) =
     case f of
-        Words c _ w ->
-            Shape x y a sx sy o n (Words c (Just fontname) w)
+        Words c outline _ w ->
+            Shape x y a sx sy o n (Words c outline (Just fontname) w)
 
         Group shapes ->
             Shape x y a sx sy o n (Group (List.map (withFont fontname) shapes))
@@ -1731,6 +1769,13 @@ and `darkYellow`.
 type Color
     = Hex String
     | Rgb Int Int Int
+    | None
+
+
+{-| -}
+transparent : Color
+transparent =
+    None
 
 
 {-| -}
@@ -2004,7 +2049,7 @@ distanceTo shape2 shape1 =
                 |> List.minimum
                 |> Maybe.withDefault 0
 
-        ( Rectangle _ w h, _ ) ->
+        ( Rectangle _ _ w h, _ ) ->
             let
                 ( x, y ) =
                     positionOf shape1
@@ -2014,7 +2059,7 @@ distanceTo shape2 shape1 =
             in
             distanceFromCircle c e { x = x, y = y, width = w, height = h, angle = rotationOf shape1 }
 
-        ( _, Rectangle _ w h ) ->
+        ( _, Rectangle _ _ w h ) ->
             let
                 ( x, y ) =
                     positionOf shape2
@@ -2094,7 +2139,7 @@ distanceFromCircle ( cx, cy ) cr { x, y, width, height, angle } =
 containsPoint : ( Number, Number ) -> Shape msg -> Bool
 containsPoint ( x, y ) shape =
     case shape of
-        Shape x_ y_ _ sx sy _ _ (Circle _ r) ->
+        Shape x_ y_ _ sx sy _ _ (Circle _ _ r) ->
             let
                 ( a, b ) =
                     ( sx * (x - x_), sy * (y - y_) )
@@ -2129,7 +2174,7 @@ the shape. If the shape is circular, this returns an approximating polygon.
 verticesOf : Shape msg -> List ( Number, Number )
 verticesOf shape =
     case shape of
-        Shape x y r sx sy _ _ (Polygon _ points) ->
+        Shape x y r sx sy _ _ (Polygon _ _ points) ->
             points
                 |> List.map (transformCoordinates x y r sx sy)
 
@@ -2151,7 +2196,7 @@ toPolygon color ((Shape _ _ _ _ _ o name _) as shape) =
     toPolygon2d shape
         |> Polygon2d.vertices
         |> List.map (Point2d.unwrap >> (\{ x, y } -> ( x, y )))
-        |> Polygon color
+        |> Polygon color NoOutline
         |> Shape 0 0 0 1 1 o name
 
 
@@ -2162,7 +2207,7 @@ polygonFromPolygon2d color p2d =
     p2d
         |> Polygon2d.vertices
         |> List.map (Point2d.unwrap >> (\{ x, y } -> ( x, y )))
-        |> Polygon color
+        |> Polygon color NoOutline
         |> Shape 0 0 0 1 1 1 Nothing
 
 
@@ -2175,11 +2220,11 @@ toPolygon2d (Shape x y rot sx sy o name f) =
     in
     case f of
         -- Crude octagonal approximation
-        Circle color r ->
-            toPolygon2d (Shape x y rot sx sy o name (Ngon color 8 r))
+        Circle color outline r ->
+            toPolygon2d (Shape x y rot sx sy o name (Ngon color outline 8 r))
 
         -- Crude single-axis scaled octagonal approximation
-        Oval color w h ->
+        Oval color outline w h ->
             let
                 sy_ =
                     sy
@@ -2190,9 +2235,9 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                             h / w
                           )
             in
-            toPolygon2d (Shape x y rot sx sy_ o name (Ngon color 8 (w / 2)))
+            toPolygon2d (Shape x y rot sx sy_ o name (Ngon color outline 8 (w / 2)))
 
-        Rectangle _ w h ->
+        Rectangle _ _ w h ->
             let
                 ( hw, hh ) =
                     ( sx * w / 2, sy * h / 2 )
@@ -2205,10 +2250,10 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                 |> Polygon2d.singleLoop
                 |> transform
 
-        Ngon _ 0 _ ->
+        Ngon _ _ 0 _ ->
             Polygon2d.singleLoop []
 
-        Ngon _ n r ->
+        Ngon _ _ n r ->
             let
                 point a =
                     Point2d.unitless (sx * r * cos a) (sy * r * sin a)
@@ -2219,16 +2264,16 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                 |> Polygon2d.singleLoop
                 |> transform
 
-        Polygon _ points ->
+        Polygon _ _ points ->
             points
                 |> List.map (\( x_, y_ ) -> Point2d.unitless (sx * x_) (sy * y_))
                 |> Polygon2d.singleLoop
                 |> transform
 
         Image w h _ ->
-            toPolygon2d (Shape x y rot sx sy o name (Rectangle white w h))
+            toPolygon2d (Shape x y rot sx sy o name (Rectangle white NoOutline w h))
 
-        Words _ _ _ ->
+        Words _ _ _ _ ->
             Polygon2d.singleLoop []
 
         Group shapes ->
@@ -2301,21 +2346,21 @@ center (Shape x y _ _ _ _ _ shape) =
 extent : Shape msg -> Number
 extent (Shape _ _ _ _ _ _ _ form) =
     case form of
-        Circle _ size ->
+        Circle _ _ size ->
             size
 
-        Oval _ s1 s2 ->
+        Oval _ _ s1 s2 ->
             -- This is only a very crude approximation
             (s1 + s2) / 2
 
-        Rectangle _ s1 s2 ->
+        Rectangle _ _ s1 s2 ->
             -- This is only a very crude approximation
             (s1 + s2) / 4
 
-        Ngon _ _ size ->
+        Ngon _ _ _ size ->
             size
 
-        Polygon _ points ->
+        Polygon _ _ points ->
             let
                 ( ( minx, miny ), ( maxx, maxy ) ) =
                     List.foldl
@@ -2332,7 +2377,7 @@ extent (Shape _ _ _ _ _ _ _ form) =
         Image s1 s2 _ ->
             (s1 + s2) / 2
 
-        Words _ _ _ ->
+        Words _ _ _ _ ->
             0
 
         Group shapes ->
@@ -2489,26 +2534,26 @@ render screen shapes =
 renderShape : Shape msg -> Svg msg
 renderShape (Shape x y angle sx sy alpha msg form) =
     case form of
-        Circle color radius ->
-            renderCircle color radius x y angle sx sy alpha msg
+        Circle color outline radius ->
+            renderCircle color outline radius x y angle sx sy alpha msg
 
-        Oval color width height ->
-            renderOval color width height x y angle sx sy alpha msg
+        Oval color outline width height ->
+            renderOval color outline width height x y angle sx sy alpha msg
 
-        Rectangle color width height ->
-            renderRectangle color width height x y angle sx sy alpha msg
+        Rectangle color outline width height ->
+            renderRectangle color outline width height x y angle sx sy alpha msg
 
-        Ngon color n radius ->
-            renderNgon color n radius x y angle sx sy alpha msg
+        Ngon color outline n radius ->
+            renderNgon color outline n radius x y angle sx sy alpha msg
 
-        Polygon color points ->
-            renderPolygon color points x y angle sx sy alpha msg
+        Polygon color outline points ->
+            renderPolygon color outline points x y angle sx sy alpha msg
 
         Image width height src ->
             renderImage width height src x y angle sx sy alpha msg
 
-        Words color font string ->
-            renderWords color font string x y angle sx sy alpha msg
+        Words color outline font string ->
+            renderWords color outline font string x y angle sx sy alpha msg
 
         SvgPath color segments ->
             renderPath color segments x y angle sx sy alpha msg
@@ -2522,20 +2567,21 @@ renderShape (Shape x y angle sx sy alpha msg form) =
 -- RENDER CIRCLE AND OVAL
 
 
-renderCircle : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderCircle color radius x y angle sx sy alpha msg =
+renderCircle : Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderCircle color outline radius x y angle sx sy alpha msg =
     Svg.circle
         (r (String.fromFloat radius)
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
             ++ renderOnClick msg
+            ++ renderOutline outline
         )
         []
 
 
-renderOval : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderOval color width height x y angle sx sy alpha msg =
+renderOval : Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderOval color outline width height x y angle sx sy alpha msg =
     ellipse
         (rx (String.fromFloat (width / 2))
             :: ry (String.fromFloat (height / 2))
@@ -2543,6 +2589,7 @@ renderOval color width height x y angle sx sy alpha msg =
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
             ++ renderOnClick msg
+            ++ renderOutline outline
         )
         []
 
@@ -2551,8 +2598,8 @@ renderOval color width height x y angle sx sy alpha msg =
 -- RENDER RECTANGLE AND IMAGE
 
 
-renderRectangle : Color -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderRectangle color w h x y angle sx sy alpha msg =
+renderRectangle : Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderRectangle color outline w h x y angle sx sy alpha msg =
     rect
         (width (String.fromFloat w)
             :: height (String.fromFloat h)
@@ -2560,6 +2607,7 @@ renderRectangle color w h x y angle sx sy alpha msg =
             :: transform (renderRectTransform w h x y angle sx sy)
             :: renderAlpha alpha
             ++ renderOnClick msg
+            ++ renderOutline outline
         )
         []
 
@@ -2592,14 +2640,15 @@ renderImage w h src x y angle sx sy alpha msg =
 -- RENDER NGON
 
 
-renderNgon : Color -> Int -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderNgon color n radius x y angle sx sy alpha msg =
+renderNgon : Color -> Outline -> Int -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderNgon color outline n radius x y angle sx sy alpha msg =
     Svg.polygon
         (points (toNgonPoints 0 n radius "")
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
             ++ renderOnClick msg
+            ++ renderOutline outline
         )
         []
 
@@ -2627,14 +2676,15 @@ toNgonPoints i n radius string =
 -- RENDER POLYGON
 
 
-renderPolygon : Color -> List ( Number, Number ) -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderPolygon color coordinates x y angle sx sy alpha msg =
+renderPolygon : Color -> Outline -> List ( Number, Number ) -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderPolygon color outline coordinates x y angle sx sy alpha msg =
     Svg.polygon
         (points (List.foldl addPoint "" coordinates)
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
             ++ renderOnClick msg
+            ++ renderOutline outline
         )
         []
 
@@ -2665,8 +2715,8 @@ renderPath color p x y angle sx sy alpha msg =
 -- RENDER WORDS
 
 
-renderWords : Color -> Font -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderWords color maybeFont string x y angle sx sy alpha msg =
+renderWords : Color -> Outline -> Font -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderWords color outline maybeFont string x y angle sx sy alpha msg =
     let
         font =
             maybeFont
@@ -2681,9 +2731,24 @@ renderWords color maybeFont string x y angle sx sy alpha msg =
             :: renderAlpha alpha
             ++ renderOnClick msg
             ++ font
+            ++ renderOutline outline
         )
         [ text string
         ]
+
+
+
+-- RENDER OUTLINE
+
+
+renderOutline : Outline -> List (Svg.Attribute msg)
+renderOutline outline =
+    case outline of
+        NoOutline ->
+            []
+
+        Outline outlinecolor thickness ->
+            [ stroke (renderColor outlinecolor), strokeWidth (String.fromFloat thickness) ]
 
 
 
@@ -2693,6 +2758,9 @@ renderWords color maybeFont string x y angle sx sy alpha msg =
 renderColor : Color -> String
 renderColor color =
     case color of
+        None ->
+            "none"
+
         Hex str ->
             str
 
