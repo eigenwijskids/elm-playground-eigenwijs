@@ -1,6 +1,7 @@
 module Eigenwijs.Playground exposing
     ( picture, animation, game
-    , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, lineBetween, svgPath
+    , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
+    , lineBetween, line, svgPath
     , withOutline
     , words, withFont
     , image
@@ -35,7 +36,8 @@ module Eigenwijs.Playground exposing
 
 # Shapes
 
-@docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon, lineBetween, svgPath
+@docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
+@docs lineBetween, line, svgPath
 
 
 # Style
@@ -1101,7 +1103,7 @@ type Form msg
     | Ngon Color Outline Int Number
     | Polygon Color Outline (List ( Number, Number ))
     | Image Number Number String
-    | SvgPath Color String
+    | SvgPath Color Number String
     | Words Color Outline Font String
     | Group (List (Shape msg))
 
@@ -1137,6 +1139,9 @@ withOutline color thickness ((Shape x y a sx sy o n f) as shape) =
 
         Words c _ ff t ->
             Shape x y a sx sy o n (Words c (Outline color thickness) ff t)
+
+        SvgPath c _ s ->
+            Shape x y a sx sy o n (SvgPath c thickness s)
 
         _ ->
             shape
@@ -2282,7 +2287,7 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                 |> Polygon2d.convexHull
                 |> transform
 
-        SvgPath _ _ ->
+        SvgPath _ _ _ ->
             Polygon2d.singleLoop []
 
 
@@ -2383,7 +2388,7 @@ extent (Shape _ _ _ _ _ _ _ form) =
         Group shapes ->
             List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
 
-        SvgPath _ segments ->
+        SvgPath _ _ segments ->
             0
 
 
@@ -2555,8 +2560,8 @@ renderShape (Shape x y angle sx sy alpha msg form) =
         Words color outline font string ->
             renderWords color outline font string x y angle sx sy alpha msg
 
-        SvgPath color segments ->
-            renderPath color segments x y angle sx sy alpha msg
+        SvgPath color width segments ->
+            renderPath color width segments x y angle sx sy alpha msg
 
         Group shapes ->
             g (transform (renderTransform x y angle sx sy) :: renderAlpha alpha ++ renderOnClick msg)
@@ -2698,11 +2703,12 @@ addPoint ( x, y ) str =
 -- RENDER PATH
 
 
-renderPath : Color -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderPath color p x y angle sx sy alpha msg =
+renderPath : Color -> Number -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderPath color width p x y angle sx sy alpha msg =
     Svg.path
         (d p
             :: stroke (renderColor color)
+            :: strokeWidth (String.fromFloat width)
             :: fill "none"
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
@@ -2879,7 +2885,37 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
 -}
 svgPath : Color -> String -> Shape msg
 svgPath color p =
-    Shape 0 0 0 1 1 1 Nothing (SvgPath color p)
+    Shape 0 0 0 1 1 1 Nothing (SvgPath color 1 p)
+
+
+{-| Draw a line with specified thickness from a list of coordinates
+-}
+line : Color -> Number -> List ( Number, Number ) -> Shape msg
+line color thickness coordlist =
+    let
+        p =
+            case coordlist of
+                [] ->
+                    ""
+
+                ( x, y ) :: rest ->
+                    "M "
+                        ++ String.fromFloat x
+                        ++ ","
+                        ++ String.fromFloat -y
+                        ++ " "
+                        ++ String.join " "
+                            (rest
+                                |> List.map
+                                    (\( u, v ) ->
+                                        "L "
+                                            ++ String.fromFloat u
+                                            ++ ","
+                                            ++ String.fromFloat -v
+                                    )
+                            )
+    in
+    Shape 0 0 0 1 1 1 Nothing (SvgPath color thickness p)
 
 
 {-| Draw a line between two points with specified thickness
