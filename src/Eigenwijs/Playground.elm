@@ -2,7 +2,7 @@ module Eigenwijs.Playground exposing
     ( picture, animation, game
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
     , lineBetween, line, svgPath
-    , withOutline
+    , withOutline, withStroke, withFill
     , words, withFont
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
@@ -42,7 +42,7 @@ module Eigenwijs.Playground exposing
 
 # Style
 
-@docs withOutline
+@docs withOutline, withStroke, withFill
 
 
 # Words
@@ -1103,7 +1103,7 @@ type Form msg
     | Ngon Color Outline Int Number
     | Polygon Color Outline (List ( Number, Number ))
     | Image Number Number String
-    | SvgPath Color Number String
+    | SvgPath Color Outline String
     | Words Color Outline Font String
     | Group (List (Shape msg))
 
@@ -1141,7 +1141,45 @@ withOutline color thickness ((Shape x y a sx sy o n f) as shape) =
             Shape x y a sx sy o n (Words c (Outline color thickness) ff t)
 
         SvgPath c _ s ->
-            Shape x y a sx sy o n (SvgPath c thickness s)
+            Shape x y a sx sy o n (SvgPath c (Outline color thickness) s)
+
+        _ ->
+            shape
+
+
+{-| Add an outline to shapes with specified color and thickness.
+-}
+withStroke : Color -> Float -> Shape msg -> Shape msg
+withStroke =
+    withOutline
+
+
+{-| Change the fill color of a shape. This also enables you to add a fill color
+to a line or svgPath shape.
+-}
+withFill : Color -> Shape msg -> Shape msg
+withFill color ((Shape x y a sx sy o n f) as shape) =
+    case f of
+        Circle _ l r ->
+            Shape x y a sx sy o n (Circle color l r)
+
+        Oval _ l w h ->
+            Shape x y a sx sy o n (Oval color l w h)
+
+        Rectangle _ l w h ->
+            Shape x y a sx sy o n (Rectangle color l w h)
+
+        Ngon _ l i s ->
+            Shape x y a sx sy o n (Ngon color l i s)
+
+        Polygon _ l cs ->
+            Shape x y a sx sy o n (Polygon color l cs)
+
+        Words _ l ff t ->
+            Shape x y a sx sy o n (Words color l ff t)
+
+        SvgPath _ l s ->
+            Shape x y a sx sy o n (SvgPath color l s)
 
         _ ->
             shape
@@ -2560,8 +2598,8 @@ renderShape (Shape x y angle sx sy alpha msg form) =
         Words color outline font string ->
             renderWords color outline font string x y angle sx sy alpha msg
 
-        SvgPath color width segments ->
-            renderPath color width segments x y angle sx sy alpha msg
+        SvgPath color outline segments ->
+            renderPath color outline segments x y angle sx sy alpha msg
 
         Group shapes ->
             g (transform (renderTransform x y angle sx sy) :: renderAlpha alpha ++ renderOnClick msg)
@@ -2703,15 +2741,20 @@ addPoint ( x, y ) str =
 -- RENDER PATH
 
 
-renderPath : Color -> Number -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderPath color width p x y angle sx sy alpha msg =
+renderPath : Color -> Outline -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderPath color outline p x y angle sx sy alpha msg =
     Svg.path
         (d p
-            :: stroke (renderColor color)
-            :: strokeWidth (String.fromFloat width)
-            :: fill "none"
+            :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
+            ++ (case outline of
+                    NoOutline ->
+                        []
+
+                    Outline c w ->
+                        [ stroke (renderColor c), strokeWidth (String.fromFloat w) ]
+               )
             ++ renderOnClick msg
         )
         []
@@ -2885,7 +2928,7 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
 -}
 svgPath : Color -> String -> Shape msg
 svgPath color p =
-    Shape 0 0 0 1 1 1 Nothing (SvgPath color 1 p)
+    Shape 0 0 0 1 1 1 Nothing (SvgPath transparent (Outline color 1) p)
 
 
 {-| Draw a line with specified thickness from a list of coordinates
@@ -2915,7 +2958,7 @@ line color thickness coordlist =
                                     )
                             )
     in
-    Shape 0 0 0 1 1 1 Nothing (SvgPath color thickness p)
+    Shape 0 0 0 1 1 1 Nothing (SvgPath transparent (Outline color thickness) p)
 
 
 {-| Draw a line between two points with specified thickness
