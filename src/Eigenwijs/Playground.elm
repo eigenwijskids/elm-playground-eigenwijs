@@ -7,7 +7,7 @@ module Eigenwijs.Playground exposing
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
     , scale, scaleX, scaleY, rotate, fade
-    , withName, clickedName
+    , withName, clickedName, nameOf
     , group
     , Time, spin, wave, zigzag, beginOfTime
     , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
@@ -67,7 +67,7 @@ module Eigenwijs.Playground exposing
 
 # Named Shapes
 
-@docs withName, clickedName
+@docs withName, nameOf, clickedName
 
 
 # Groups
@@ -1762,6 +1762,23 @@ it is clicked.
 withName : String -> Shape Msg -> Shape Msg
 withName n (Shape x y a sx sy o _ f) =
     Shape x y a sx sy o (Just (ClickedName n)) f
+
+{-| Return the name of a shape if it was given one.
+
+    let
+        namedSquare = square red 50 |> withName "The Square"
+    in
+    case nameOf namedSquare of
+        Nothing -> "unnamed shape"
+        Just name -> "a shape named " ++ name
+
+-}
+nameOf : Shape Msg -> Maybe String
+nameOf (Shape _ _ _ _ _ _ maybeMessage _) =
+    case maybeMessage of
+        Just (ClickedName name) -> Just name
+        _ -> Nothing
+
 
 
 {-| Detect when a named shape is clicked. Use with `withName`.
