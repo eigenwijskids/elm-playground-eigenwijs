@@ -7,10 +7,10 @@ module Eigenwijs.Playground exposing
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
     , scale, scaleX, scaleY, rotate, fade
-    , withName, clickedName, nameOf
+    , withName, nameOf, clickedName
     , group
     , Time, spin, wave, zigzag, beginOfTime
-    , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
+    , Computer, Mouse, Screen, Keyboard, toX, toY, toXY, Audio
     , Color, rgb, transparent, red, orange, yellow, green, blue, purple, brown
     , lightRed, lightOrange, lightYellow, lightGreen, lightBlue, lightPurple, lightBrown
     , darkRed, darkOrange, darkYellow, darkGreen, darkBlue, darkPurple, darkBrown
@@ -82,7 +82,7 @@ module Eigenwijs.Playground exposing
 
 # Computer
 
-@docs Computer, Mouse, Screen, Keyboard, toX, toY, toXY
+@docs Computer, Mouse, Screen, Keyboard, toX, toY, toXY, Audio
 
 
 # Colors
@@ -166,6 +166,7 @@ import Task
 import Time
 import Vector2d
 import WebAudio
+import WebAudio.Context exposing (AudioContext)
 import WebAudio.Property
 
 
@@ -258,14 +259,20 @@ about your computer:
 So you can use expressions like `computer.mouse.x` and `computer.keyboard.enter`
 in games where you want some mouse or keyboard interaction.
 
+When you use [`gameWithAudio`](#gameWithAudio), you have access to the audio
+context from the passed computer parameter, for instance to be able to use
+the current audio time. This `audio` field is also available in the computer
+parameter passed to your update function. It is a `Maybe AudioContext`, to be
+able to still run your program even when the context is unavailable. (That can
+happen if initialisation of the context via parsed program flags failed.)
 -}
 type alias Computer =
     { mouse : Mouse
     , keyboard : Keyboard
     , screen : Screen
     , time : Time
+    , audio : Audio
     }
-
 
 
 -- MOUSE
@@ -626,6 +633,18 @@ beginOfTime =
     Time (Time.millisToPosix 0)
 
 
+-- AUDIO
+
+
+{-| Find out things about the audio system, such as the time that the audio has
+been running in seconds, and whether the audio system is ready to use (available
+or not).
+-}
+type alias Audio =
+    { time : Float
+    , available : Bool
+    }
+
 
 -- ANIMATION
 
@@ -805,7 +824,7 @@ Notice that in the `update` we use information from the keyboard to update the
 `x` and `y` values. These building blocks let you make pretty fancy games!
 
 -}
-game : (Computer -> memory -> List (Shape Msg)) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+game : (Computer -> memory -> List (Shape Msg)) -> (Computer -> memory -> memory) -> memory -> Program D.Value (Game memory) Msg
 game viewMemory updateMemory initialMemory =
     let
         view model =
@@ -832,14 +851,21 @@ initialComputer =
     , keyboard = emptyKeyboard
     , screen = toScreen 600 600
     , time = beginOfTime
+    , audio = audioFrom Nothing
     }
 
 
 {-| Game init function
 -}
-gameInit : memory -> () -> ( Game memory, Cmd Msg )
-gameInit initialMemory () =
-    ( Game E.Visible initialMemory initialComputer
+gameInit : memory -> D.Value -> ( Game memory, Cmd Msg )
+gameInit initialMemory flags =
+    let
+        audioContext =
+            case flags |> D.decodeValue (D.field "audiocontext" D.value) of
+                 Ok v -> WebAudio.Context.from v
+                 Err _ -> Nothing
+    in
+    ( Game audioContext E.Visible initialMemory initialComputer
     , Task.perform GotViewport Dom.getViewport
     )
 
@@ -847,8 +873,8 @@ gameInit initialMemory () =
 {-| Game view function
 -}
 gameView : (Computer -> memory -> List (Shape Msg)) -> Game memory -> Html.Html Msg
-gameView viewMemory (Game _ memory computer) =
-    render computer.screen (viewMemory computer memory)
+gameView viewMemory (Game audioContext _ memory computer) =
+    render computer.screen (viewMemory {computer | audio = audioFrom audioContext} memory)
 
 
 
@@ -858,7 +884,7 @@ gameView viewMemory (Game _ memory computer) =
 {-| Game subscriptions
 -}
 gameSubscriptions : Game memory -> Sub Msg
-gameSubscriptions (Game visibility _ _) =
+gameSubscriptions (Game _ visibility _ _) =
     case visibility of
         E.Hidden ->
             E.onVisibilityChange VisibilityChanged
@@ -884,7 +910,7 @@ gameSubscriptions (Game visibility _ _) =
 {-| Game model containing the visibility status, custom data (memory) and the Computer state record.
 -}
 type Game memory
-    = Game E.Visibility memory Computer
+    = Game (Maybe AudioContext) E.Visibility memory Computer
 
 
 {-| Animation message alias
@@ -916,10 +942,10 @@ type Msg
 {-| Game update function
 -}
 gameUpdate : (Computer -> memory -> memory) -> Msg -> Game memory -> Game memory
-gameUpdate updateMemory msg (Game vis memory computer) =
+gameUpdate updateMemory msg (Game audioContext vis memory computer) =
     case msg of
         Tick time ->
-            Game vis (updateMemory computer memory) <|
+            Game audioContext vis (updateMemory {computer | audio = audioFrom audioContext} memory) <|
                 if computer.mouse.click then
                     { computer | time = Time time, mouse = mouseClick False computer.mouse }
 
@@ -927,13 +953,13 @@ gameUpdate updateMemory msg (Game vis memory computer) =
                     { computer | time = Time time }
 
         GotViewport { viewport } ->
-            Game vis memory { computer | screen = toScreen viewport.width viewport.height }
+            Game audioContext vis memory { computer | screen = toScreen viewport.width viewport.height }
 
         Resized w h ->
-            Game vis memory { computer | screen = toScreen (toFloat w) (toFloat h) }
+            Game audioContext vis memory { computer | screen = toScreen (toFloat w) (toFloat h) }
 
         KeyChanged isDown key ->
-            Game vis memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+            Game audioContext vis memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
 
         MouseMove pageX pageY ->
             let
@@ -943,16 +969,17 @@ gameUpdate updateMemory msg (Game vis memory computer) =
                 y =
                     computer.screen.top - pageY
             in
-            Game vis memory { computer | mouse = mouseMove x y computer.mouse }
+            Game audioContext vis memory { computer | mouse = mouseMove x y computer.mouse }
 
         MouseClick ->
-            Game vis memory { computer | mouse = mouseClick True computer.mouse }
+            Game audioContext vis memory { computer | mouse = mouseClick True computer.mouse }
 
         MouseButton isDown ->
-            Game vis memory { computer | mouse = mouseDown isDown computer.mouse }
+            Game audioContext vis memory { computer | mouse = mouseDown isDown computer.mouse }
 
         VisibilityChanged visibility ->
-            Game visibility
+            Game audioContext
+                visibility
                 memory
                 { computer
                     | keyboard = emptyKeyboard
@@ -964,7 +991,8 @@ gameUpdate updateMemory msg (Game vis memory computer) =
                 mouse =
                     computer.mouse
             in
-            Game vis
+            Game audioContext
+                vis
                 memory
                 { computer
                     | keyboard = emptyKeyboard
@@ -1763,22 +1791,29 @@ withName : String -> Shape Msg -> Shape Msg
 withName n (Shape x y a sx sy o _ f) =
     Shape x y a sx sy o (Just (ClickedName n)) f
 
+
 {-| Return the name of a shape if it was given one.
 
     let
-        namedSquare = square red 50 |> withName "The Square"
+        namedSquare =
+            square red 50 |> withName "The Square"
     in
     case nameOf namedSquare of
-        Nothing -> "unnamed shape"
-        Just name -> "a shape named " ++ name
+        Nothing ->
+            "unnamed shape"
+
+        Just name ->
+            "a shape named " ++ name
 
 -}
 nameOf : Shape Msg -> Maybe String
 nameOf (Shape _ _ _ _ _ _ maybeMessage _) =
     case maybeMessage of
-        Just (ClickedName name) -> Just name
-        _ -> Nothing
+        Just (ClickedName name) ->
+            Just name
 
+        _ ->
+            Nothing
 
 
 {-| Detect when a named shape is clicked. Use with `withName`.
@@ -2898,6 +2933,18 @@ renderOnClick m =
 
 -- AUDIO
 
+audioFrom : Maybe AudioContext -> Audio
+audioFrom maybeContext =
+  case maybeContext of
+    Nothing ->
+      { time = 0
+      , available = False
+      }
+    Just context ->
+      { time = WebAudio.Context.currentTime context
+      , available = True
+      }
+
 
 {-| The AudioPort connects our Elm game to a piece of javascript in the html file the game is embedded in,
 so it can access the WebAudio API. Use in your game program as follows:
@@ -2918,7 +2965,7 @@ type alias AudioPort msg =
 This is still a work in progress, more documentation and tuning of the api is to come.
 
 -}
-gameWithAudio : AudioPort Msg -> (Computer -> memory -> List WebAudio.Node) -> (Computer -> memory -> List (Shape Msg)) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+gameWithAudio : AudioPort Msg -> (Computer -> memory -> List WebAudio.Node) -> (Computer -> memory -> List (Shape Msg)) -> (Computer -> memory -> memory) -> memory -> Program D.Value (Game memory) Msg
 gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
     let
         view model =
@@ -2926,11 +2973,11 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
             , body = [ gameView viewMemory model ]
             }
 
-        update msg ((Game vis memory computer) as model) =
+        update msg ((Game audioContext vis memory computer) as model) =
             ( gameUpdate updateMemory msg model
-            , audioForMemory computer memory
-                |> Json.Encode.list WebAudio.encode
-                |> toWebAudio
+            , audioForMemory {computer | audio = audioFrom audioContext} memory
+              |> Json.Encode.list WebAudio.encode
+              |> toWebAudio
             )
     in
     Browser.document
