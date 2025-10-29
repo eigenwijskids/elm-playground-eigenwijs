@@ -24,7 +24,7 @@ module Eigenwijs.Playground3d exposing
     , positionOf
     , emptyWorld, withGravity, withShapes, withDynamicShapes
     , withWeight, kilograms, grams
-    , weightOf
+    , weightOf, inKilograms, inGrams
     , simulate, simulateFor, shapesFromWorld
     )
 
@@ -3668,17 +3668,41 @@ transform t r s mf =
 -- PHYSICS
 
 
+{-| Create an empty physics simulated world to add playground shapes to. Use it
+for example like this:
+
+    init =
+        { world =
+            emptyWorld
+                |> withGravity 9.81
+                |> withShapes
+                    [ square black 500
+                    ]
+                |> withDynamicShapes
+                    [ cylinder blue 50 100 |> move 100 100 100 |> withWeight (kilograms 10)
+                    , cube yellow 50 |> move 60 90 300
+                    , block red 50 50 100 |> move 100 -100 150
+                    , sphere green 50 |> move 70 80 400
+                    ]
+        }
+
+-}
 emptyWorld : World Shape
 emptyWorld =
     World.empty
 
 
+{-| Add gravity (meters per second squared) to the simulated world.
+-}
 withGravity : Number -> World Shape -> World Shape
 withGravity acceleration =
     World.withGravity (Acceleration.metersPerSecondSquared acceleration)
         Direction3d.negativeZ
 
 
+{-| Add static shapes to the simulated world. They will stay where they are
+put.
+-}
 withShapes : List Shape -> World Shape -> World Shape
 withShapes shapes world =
     shapes
@@ -3738,6 +3762,9 @@ blockBody x y z w d h shape =
         |> Body.translateBy (Vector3d.centimeters x y z)
 
 
+{-| Add dynamic shapes to the simulated world. These shapes will have weight.
+They are subject to gravity and other forces.
+-}
 withDynamicShapes : List Shape -> World Shape -> World Shape
 withDynamicShapes shapes world =
     shapes
@@ -3752,42 +3779,72 @@ withDynamicShape shape =
         )
 
 
+{-| Set the weight (actually the mass) for a shape. For example:
+
+    cylinder blue 50 100 |> withWeight (kilograms 10)
+
+-}
 withWeight : Mass -> Shape -> Shape
 withWeight =
     -- TODO
     always identity
 
 
+{-| Specify mass (weight) in kilograms.
+-}
 kilograms : Number -> Mass
 kilograms =
     Mass.kilograms
 
 
+{-| Specify mass (weight) in grams.
+-}
 grams : Number -> Mass
 grams =
     Mass.grams
 
 
+{-| Return a mass (weight) in kilograms.
+-}
 inKilograms : Mass -> Number
 inKilograms =
     Mass.inKilograms
 
 
+{-| Return a mass (weight) in grams.
+-}
 inGrams : Mass -> Number
 inGrams =
     Mass.inGrams
 
 
+{-| Simulate the world. For use in the `update` function:
+
+    update computer memory =
+        { memory
+            | world = simulate memory.world
+        }
+
+-}
 simulate : World Shape -> World Shape
 simulate =
     World.simulate (Duration.seconds (1 / 60))
 
 
+{-| Simulate the world with a step of a specified duration.
+-}
 simulateFor : Duration -> World Shape -> World Shape
 simulateFor duration =
     World.simulate duration
 
 
+{-| Get the shapes from the simulated world to be able to render them inside a
+view for example:
+
+    view computer memory =
+        shapesFromWorld memory.world
+
+-}
 shapesFromWorld : World Shape -> List Shape
 shapesFromWorld world =
     world
