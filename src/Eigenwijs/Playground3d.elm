@@ -22,6 +22,10 @@ module Eigenwijs.Playground3d exposing
     , isometric, orbit, eyesAt, lookAt, pan, tilt, zoom
     , withName, whereIs, center, extent, extents
     , positionOf
+    , emptyWorld, withGravity, withShapes, withDynamicShapes
+    , withWeight, kilograms, grams
+    , weightOf
+    , simulate, simulateFor, shapesFromWorld
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -151,8 +155,17 @@ The following primitives work in a (slightly) different way:
 @docs withName, whereIs, center, extent, extents
 @docs positionOf
 
+
+# Physics
+
+@docs emptyWorld, withGravity, withShapes, withDynamicShapes
+@docs withWeight, kilograms, grams
+@docs weightOf, inKilograms, inGrams
+@docs simulate, simulateFor, shapesFromWorld
+
 -}
 
+import Acceleration
 import Angle exposing (Angle)
 import Array
 import Axis3d exposing (Axis3d)
@@ -166,8 +179,10 @@ import Cone3d
 import Cylinder3d
 import DelaunayTriangulation2d
 import Direction3d exposing (Direction3d)
+import Duration exposing (Duration)
 import Eigenwijs.Playground as Playground2d
 import Eigenwijs.Playground3d.Shape as Shape
+import Frame3d
 import Html
 import Html.Attributes as H
 import Html.Events.Extra.Touch as Touch
@@ -176,9 +191,9 @@ import Http
 import Json.Decode as D
 import Json.Encode as E
 import Length exposing (Length, Meters, centimeters, meters)
+import Mass exposing (Mass)
 import MogeeFont
 import Physics.Body as Body exposing (Body)
-import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
 import Physics.World as World exposing (World)
 import Pixels exposing (Pixels, pixels)
 import Point2d exposing (Point2d)
@@ -1153,17 +1168,17 @@ type alias GameMsg =
 -}
 type alias Camera =
     { mode : CameraMode
-    , target : Point3d Meters WorldCoordinates
+    , target : Point3d Meters Shape
     }
 
 
 {-| Camera Mode type
 -}
 type CameraMode
-    = FirstPerson (Point3d Meters WorldCoordinates) Angle
+    = FirstPerson (Point3d Meters Shape) Angle
     | Isometric Length Length
     | Orbit Number Number Number Angle
-    | PanTiltZoomFov (Point3d Meters WorldCoordinates) Angle Angle Number Angle
+    | PanTiltZoomFov (Point3d Meters Shape) Angle Angle Number Angle
 
 
 {-| Create an isometric camera
@@ -1609,7 +1624,7 @@ type Form
     | ExtrudedPolygon Color Number (List ( Number, Number ))
     | Words Color String
     | Object Color (List ( Number, Number, Number )) (List ( Int, Int, Int ))
-    | Entity (Entity WorldCoordinates)
+    | Entity (Entity Shape)
 
 
 type alias Font =
@@ -2631,6 +2646,13 @@ whereIs name (Shape x y z rx ry rz s _ otherName form) =
                 []
 
 
+{-| Returns the weight of a shape as a Mass value (set with `withWeigth`).
+-}
+weightOf : Shape -> Mass
+weightOf (Shape _ _ _ _ _ _ _ _ _ _) =
+    Mass.kilograms 0.1
+
+
 {-| Returns the position of a shape, as a pair (x, y, z).
 -}
 positionOf : Shape -> ( Number, Number, Number )
@@ -2893,7 +2915,7 @@ extents (Shape _ _ _ _ _ _ _ _ _ form) =
 
 
 type alias View =
-    { position : Point3d Meters WorldCoordinates
+    { position : Point3d Meters Shape
     , orientation : Float
     , cameraMode : CameraMode
     }
@@ -2979,12 +3001,12 @@ camera cam =
                 }
 
 
-withColor : Color -> Mesh WorldCoordinates { a | normals : () } -> Entity WorldCoordinates
+withColor : Color -> Mesh Shape { a | normals : () } -> Entity Shape
 withColor color =
     withMaterial { color = color, roughness = 0.4 }
 
 
-withMaterial : { color : Color, roughness : Number } -> Mesh WorldCoordinates { a | normals : () } -> Entity WorldCoordinates
+withMaterial : { color : Color, roughness : Number } -> Mesh Shape { a | normals : () } -> Entity Shape
 withMaterial { color, roughness } =
     Scene3d.mesh (material color roughness)
 
@@ -2998,19 +3020,19 @@ material color roughness =
 
 {-| Add a 3D shape to a Scene3D scene as an entity.
 -}
-entity : Shape -> Entity WorldCoordinates
+entity : Shape -> Entity Shape
 entity (Shape x y z rr rp ry s alpha _ form) =
     renderForm Nothing form
         |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
 
 
-entityWithFont : Font -> Shape -> Entity WorldCoordinates
+entityWithFont : Font -> Shape -> Entity Shape
 entityWithFont font (Shape x y z rr rp ry s alpha _ form) =
     renderForm (Just font) form
         |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
 
 
-renderForm : Maybe Font -> Form -> Entity WorldCoordinates
+renderForm : Maybe Font -> Form -> Entity Shape
 renderForm font form =
     case form of
         Group shapes ->
@@ -3077,7 +3099,7 @@ renderForm font form =
 -- RENDER GROUP
 
 
-renderGroup : Maybe Font -> List Shape -> Entity WorldCoordinates
+renderGroup : Maybe Font -> List Shape -> Entity Shape
 renderGroup font shapes =
     case font of
         Nothing ->
@@ -3095,13 +3117,13 @@ renderGroup font shapes =
 -- RENDER CIRCLE AND OVAL
 
 
-renderCircle : Color -> Number -> Entity WorldCoordinates
+renderCircle : Color -> Number -> Entity Shape
 renderCircle color radius =
     Shape.circle (radius / 100)
         |> withColor color
 
 
-renderCylinder : Material -> Number -> Number -> Entity WorldCoordinates
+renderCylinder : Material -> Number -> Number -> Entity Shape
 renderCylinder { color, roughness } radius height =
     Cylinder3d.centeredOn Point3d.origin
         Direction3d.z
@@ -3111,7 +3133,7 @@ renderCylinder { color, roughness } radius height =
         |> Scene3d.cylinder (material color roughness)
 
 
-renderCone : Material -> Number -> Number -> Entity WorldCoordinates
+renderCone : Material -> Number -> Number -> Entity Shape
 renderCone { color, roughness } radius height =
     Cone3d.along Axis3d.z
         { base = Length.centimeters 0
@@ -3121,7 +3143,7 @@ renderCone { color, roughness } radius height =
         |> Scene3d.cone (material color roughness)
 
 
-renderTriangle : Color -> Number -> Entity WorldCoordinates
+renderTriangle : Color -> Number -> Entity Shape
 renderTriangle color s =
     Shape.triangle (s / 100)
         |> withColor color
@@ -3131,7 +3153,7 @@ renderTriangle color s =
 -- RENDER RECTANGLE AND IMAGE
 
 
-renderRectangle : Color -> Number -> Number -> Entity WorldCoordinates
+renderRectangle : Color -> Number -> Number -> Entity Shape
 renderRectangle color w h =
     Shape.rectangle (w / 100) (h / 100)
         |> withColor color
@@ -3141,7 +3163,7 @@ renderRectangle color w h =
 -- RENDER POLYGON
 
 
-renderPolygon : Color -> List ( Number, Number ) -> Entity WorldCoordinates
+renderPolygon : Color -> List ( Number, Number ) -> Entity Shape
 renderPolygon color points =
     triangulatePolygon points
         |> List.map
@@ -3328,7 +3350,7 @@ isEar triple points =
 
 {-| ExtrudedPolygon rendering implementation
 -}
-renderExtrudedPolygon : Color -> Number -> List ( Number, Number ) -> Entity WorldCoordinates
+renderExtrudedPolygon : Color -> Number -> List ( Number, Number ) -> Entity Shape
 renderExtrudedPolygon color height points =
     let
         bottomVertices =
@@ -3415,7 +3437,7 @@ addPoint ( x, y ) str =
 -- RENDER SPHERE
 
 
-renderSphere : Material -> Number -> Entity WorldCoordinates
+renderSphere : Material -> Number -> Entity Shape
 renderSphere { color, roughness } radius =
     Sphere3d.withRadius (Length.centimeters radius) Point3d.origin
         |> Scene3d.sphere (material color roughness)
@@ -3425,7 +3447,7 @@ renderSphere { color, roughness } radius =
 -- RENDER BLOCK
 
 
-renderBlock : Material -> Number -> Number -> Number -> Entity WorldCoordinates
+renderBlock : Material -> Number -> Number -> Number -> Entity Shape
 renderBlock { color, roughness } w h d =
     let
         rw =
@@ -3452,7 +3474,7 @@ renderBlock { color, roughness } w h d =
 -- RENDER SNAKE
 
 
-renderSnake : Color -> List ( Number, Number, Number ) -> Entity WorldCoordinates
+renderSnake : Color -> List ( Number, Number, Number ) -> Entity Shape
 renderSnake color points =
     points
         |> List.map (\( x, y, z ) -> Point3d.centimeters x y z)
@@ -3465,7 +3487,7 @@ renderSnake color points =
 -- RENDER PRISM
 
 
-renderPrism : Color -> Number -> Number -> Entity WorldCoordinates
+renderPrism : Color -> Number -> Number -> Entity Shape
 renderPrism color size height =
     let
         s =
@@ -3525,7 +3547,7 @@ renderPrism color size height =
 -- RENDER WALL
 
 
-renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity WorldCoordinates
+renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity Shape
 renderWall color height points =
     TriangularMesh.strip
         (points
@@ -3542,7 +3564,7 @@ renderWall color height points =
 -- RENDER OBJECT
 
 
-renderObject : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Entity WorldCoordinates
+renderObject : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Entity Shape
 renderObject color vertices faces =
     let
         vertexToPoint ( x, y, z ) =
@@ -3561,7 +3583,7 @@ renderObject color vertices faces =
 -- RENDER WORDS
 
 
-renderWords : Font -> Color -> String -> Entity WorldCoordinates
+renderWords : Font -> Color -> String -> Entity Shape
 renderWords font color text =
     Scene3d.Mesh.texturedFacets (mesh text)
         |> Scene3d.mesh (Material.texturedColor font)
@@ -3620,10 +3642,174 @@ type alias Material =
     { color : Color, roughness : Number }
 
 
-transform : Translation -> Rotation -> Scale -> Entity WorldCoordinates -> Entity WorldCoordinates
+transform : Translation -> Rotation -> Scale -> Entity Shape -> Entity Shape
 transform t r s =
     Scene3d.rotateAround Axis3d.x (Angle.degrees r.x)
         >> Scene3d.rotateAround Axis3d.y (Angle.degrees r.y)
         >> Scene3d.rotateAround Axis3d.z (Angle.degrees r.z)
         >> Scene3d.scaleAbout Point3d.origin s
         >> Scene3d.translateBy (Vector3d.centimeters t.x t.y t.z)
+
+
+
+-- PHYSICS
+
+
+emptyWorld : World Shape
+emptyWorld =
+    World.empty
+
+
+withGravity : Number -> World Shape -> World Shape
+withGravity acceleration =
+    World.withGravity (Acceleration.metersPerSecondSquared acceleration)
+        Direction3d.negativeZ
+
+
+withShapes : List Shape -> World Shape -> World Shape
+withShapes shapes world =
+    shapes
+        |> List.foldl withShape world
+
+
+withShape : Shape -> World Shape -> World Shape
+withShape shape =
+    World.add (bodyFromShape shape)
+
+
+bodyFromShape : Shape -> Body Shape
+bodyFromShape ((Shape x y z rr rp ry s a n form) as shape) =
+    case form of
+        Circle _ size ->
+            blockBody x y z size size 0.001 shape
+
+        Triangle _ size ->
+            blockBody x y z size size 0.001 shape
+
+        Square _ size ->
+            blockBody x y z size size 0.001 shape
+
+        Rectangle _ w d ->
+            blockBody x y z w d 0.001 shape
+
+        Sphere _ radius ->
+            Body.sphere (Sphere3d.atOrigin (Length.centimeters radius)) shape
+                |> Body.translateBy (Vector3d.centimeters x y z)
+
+        Cube _ size ->
+            blockBody x y z size size size shape
+
+        Cylinder _ radius height ->
+            Body.cylinder
+                (Cylinder3d.centeredOn
+                    Point3d.origin
+                    Direction3d.z
+                    { radius = Length.centimeters radius
+                    , length = Length.centimeters height
+                    }
+                )
+                shape
+                |> Body.translateBy (Vector3d.centimeters x y z)
+
+        _ ->
+            let
+                ( w, d, h ) =
+                    extents shape
+            in
+            blockBody x y z w d h shape
+
+
+blockBody x y z w d h shape =
+    Body.block (Block3d.centeredOn Frame3d.atOrigin ( Length.centimeters w, Length.centimeters d, Length.centimeters h ))
+        shape
+        |> Body.translateBy (Vector3d.centimeters x y z)
+
+
+withDynamicShapes : List Shape -> World Shape -> World Shape
+withDynamicShapes shapes world =
+    shapes
+        |> List.foldl withDynamicShape world
+
+
+withDynamicShape : Shape -> World Shape -> World Shape
+withDynamicShape shape =
+    World.add
+        (bodyFromShape shape
+            |> Body.withBehavior (Body.dynamic (weightOf shape))
+        )
+
+
+withWeight : Mass -> Shape -> Shape
+withWeight =
+    -- TODO
+    always identity
+
+
+kilograms : Number -> Mass
+kilograms =
+    Mass.kilograms
+
+
+grams : Number -> Mass
+grams =
+    Mass.grams
+
+
+inKilograms : Mass -> Number
+inKilograms =
+    Mass.inKilograms
+
+
+inGrams : Mass -> Number
+inGrams =
+    Mass.inGrams
+
+
+simulate : World Shape -> World Shape
+simulate =
+    World.simulate (Duration.seconds (1 / 60))
+
+
+simulateFor : Duration -> World Shape -> World Shape
+simulateFor duration =
+    World.simulate duration
+
+
+shapesFromWorld : World Shape -> List Shape
+shapesFromWorld world =
+    world
+        |> World.bodies
+        |> List.map shapeFromBody
+
+
+shapeFromBody : Body Shape -> Shape
+shapeFromBody body =
+    let
+        (Shape _ _ _ _ _ _ s a n form) =
+            Body.data body
+
+        frame =
+            Body.frame body
+
+        { x, y, z } =
+            Frame3d.originPoint frame |> Point3d.toMeters
+
+        m_1 =
+            Frame3d.xDirection frame |> Direction3d.unwrap
+
+        m_2 =
+            Frame3d.yDirection frame |> Direction3d.unwrap
+
+        m_3 =
+            Frame3d.zDirection frame |> Direction3d.unwrap
+
+        rr =
+            atan2 m_3.y m_3.z |> Angle.radians |> Angle.inDegrees
+
+        rp =
+            atan2 -m_3.x (sqrt (m_1.x ^ 2 + m_2.x ^ 2)) |> Angle.radians |> Angle.inDegrees |> (*) -1
+
+        ry =
+            atan2 m_2.x m_1.x |> Angle.radians |> Angle.inDegrees |> (*) -1
+    in
+    Shape (x * 100) (y * 100) (z * 100) rr rp ry s a n form
