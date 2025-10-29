@@ -182,7 +182,7 @@ import Direction3d exposing (Direction3d)
 import Duration exposing (Duration)
 import Eigenwijs.Playground as Playground2d
 import Eigenwijs.Playground3d.Shape as Shape
-import Frame3d
+import Frame3d exposing (Frame3d)
 import Html
 import Html.Attributes as H
 import Html.Events.Extra.Touch as Touch
@@ -1603,7 +1603,15 @@ type Shape
         -- alpha
         String
         -- name to make shapes identifiable
+        (Maybe Frame)
+        -- to avoid issues like gimbal lock with physics
+        -- if this is set, use it as the transform
+        -- ignoring position and rotation values
         Form
+
+
+type alias Frame =
+    Frame3d Meters Shape { defines : Shape }
 
 
 type Form
@@ -1649,7 +1657,7 @@ the circle.
 -}
 circle : Color -> Number -> Shape
 circle color radius =
-    Shape 0 0 0 0 0 0 1 1 "" (Circle color radius)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Circle color radius)
 
 
 {-| Make cylinders:
@@ -1662,7 +1670,7 @@ You give a color, the radius and then the height.
 -}
 cylinder : Color -> Number -> Number -> Shape
 cylinder color radius height =
-    Shape 0 0 0 0 0 0 1 1 "" (Cylinder color radius height)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Cylinder color radius height)
 
 
 {-| Make cones:
@@ -1675,7 +1683,7 @@ You give a color, the radius and then the height.
 -}
 cone : Color -> Number -> Number -> Shape
 cone color radius height =
-    Shape 0 0 0 0 0 0 1 1 "" (Cone color radius height)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Cone color radius height)
 
 
 {-| Make triangles:
@@ -1687,7 +1695,7 @@ You give a color and then its size.
 -}
 triangle : Color -> Number -> Shape
 triangle color size =
-    Shape 0 0 0 0 0 0 1 1 "" (Triangle color size)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Triangle color size)
 
 
 {-| Make squares. Here are two squares combined to look like an empty box:
@@ -1706,7 +1714,7 @@ be 80 pixels by 80 pixels.
 -}
 square : Color -> Number -> Shape
 square color n =
-    Shape 0 0 0 0 0 0 1 1 "" (Rectangle color n n)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Rectangle color n n)
 
 
 {-| Make rectangles. This example makes a red cross:
@@ -1725,7 +1733,7 @@ part of the cross, the thinner and taller part.
 -}
 rectangle : Color -> Number -> Number -> Shape
 rectangle color width height =
-    Shape 0 0 0 0 0 0 1 1 "" (Rectangle color width height)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Rectangle color width height)
 
 
 {-| Make any shape you want! Here is a very thin triangle:
@@ -1744,14 +1752,14 @@ rectangle color width height =
 -}
 polygon : Color -> List ( Number, Number ) -> Shape
 polygon color points =
-    Shape 0 0 0 0 0 0 1 1 "" (Polygon color points)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Polygon color points)
 
 
 {-| Make a snake!
 -}
 snake : Color -> List ( Number, Number, Number ) -> Shape
 snake color points =
-    Shape 0 0 0 0 0 0 1 1 "" (Snake color points)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Snake color points)
 
 
 {-| Make sphere:
@@ -1769,7 +1777,7 @@ vertical part of the cross, the thinner and taller part.
 -}
 sphere : Color -> Number -> Shape
 sphere color size =
-    Shape 0 0 0 0 0 0 1 1 "" (Sphere color size)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Sphere color size)
 
 
 {-| Make cubes:
@@ -1787,7 +1795,7 @@ vertical part of the cross, the thinner and taller part.
 -}
 cube : Color -> Number -> Shape
 cube color size =
-    Shape 0 0 0 0 0 0 1 1 "" (Cube color size)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Cube color size)
 
 
 {-| Make blocks. This example makes a red cross:
@@ -1806,14 +1814,14 @@ vertical part of the cross, the thinner and taller part.
 -}
 block : Color -> Number -> Number -> Number -> Shape
 block color width height depth =
-    Shape 0 0 0 0 0 0 1 1 "" (Block color width height depth)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Block color width height depth)
 
 
 {-| Make a prism
 -}
 prism : Color -> Number -> Number -> Shape
 prism color size height =
-    Shape 0 0 0 0 0 0 1 1 "" (Prism color size height)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Prism color size height)
 
 
 {-| Make 3d objects from vertices and faces, such as a pyramid:
@@ -1841,7 +1849,7 @@ prism color size height =
 -}
 obj : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Shape
 obj color vertices faces =
-    Shape 0 0 0 0 0 0 1 1 "" (Object color vertices faces)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Object color vertices faces)
 
 
 {-| 3D shapes can be quite intensive to render, so it is best to render the more
@@ -1897,7 +1905,7 @@ still want to animate its head:
 -}
 prerendered : Shape -> Shape
 prerendered =
-    entity >> Entity >> Shape 0 0 0 0 0 0 1 1 ""
+    entity >> Entity >> Shape 0 0 0 0 0 0 1 1 "" Nothing
 
 
 {-| Put shapes together so you can [`move`](#move) and [`rotate`](#rotate)
@@ -1931,7 +1939,7 @@ them as a group. Maybe you want to put a bunch of stars in the sky:
 -}
 group : List Shape -> Shape
 group shapes =
-    Shape 0 0 0 0 0 0 1 1 "" (Group shapes)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Group shapes)
 
 
 {-| Pull a 2D shape "up" to form a 3D body:
@@ -1947,33 +1955,33 @@ centered around the xy-plane.
 extrude : Number -> Shape -> Shape
 extrude h shape =
     case shape of
-        Shape x y z rr rp ry s a n (Group shapes) ->
+        Shape x y z rr rp ry s a n mf (Group shapes) ->
             shapes
                 |> List.map (extrude h)
                 |> Group
-                |> Shape x y z rr rp ry s a n
+                |> Shape x y z rr rp ry s a n mf
 
-        Shape x y z rr rp ry s a n (Circle c r) ->
-            Shape x y z rr rp ry s a n (Cylinder c r h)
+        Shape x y z rr rp ry s a n mf (Circle c r) ->
+            Shape x y z rr rp ry s a n mf (Cylinder c r h)
 
-        Shape x y z rr rp ry s a n (Square c r) ->
+        Shape x y z rr rp ry s a n mf (Square c r) ->
             if h == r then
-                Shape x y z rr rp ry s a n (Cube c r)
+                Shape x y z rr rp ry s a n mf (Cube c r)
 
             else
-                Shape x y z rr rp ry s a n (Block c r r h)
+                Shape x y z rr rp ry s a n mf (Block c r r h)
 
-        Shape x y z rr rp ry s a n (Rectangle c wb hb) ->
-            Shape x y z rr rp ry s a n (Block c wb hb h)
+        Shape x y z rr rp ry s a n mf (Rectangle c wb hb) ->
+            Shape x y z rr rp ry s a n mf (Block c wb hb h)
 
-        Shape x y z rr rp ry s a n (Triangle c size) ->
-            Shape x y z rr rp ry s a n (Prism c size h)
+        Shape x y z rr rp ry s a n mf (Triangle c size) ->
+            Shape x y z rr rp ry s a n mf (Prism c size h)
 
-        Shape x y z rr rp ry s a n (Polygon c points) ->
-            Shape x y z rr rp ry s a n (ExtrudedPolygon c h points)
+        Shape x y z rr rp ry s a n mf (Polygon c points) ->
+            Shape x y z rr rp ry s a n mf (ExtrudedPolygon c h points)
 
-        Shape x y z rr rp ry s a n (Snake c p) ->
-            Shape x y z rr rp ry s a n (Wall c h p)
+        Shape x y z rr rp ry s a n mf (Snake c p) ->
+            Shape x y z rr rp ry s a n mf (Wall c h p)
 
         _ ->
             shape
@@ -1991,33 +1999,33 @@ z-axis to form a 3D cylinder.
 pullUp : Number -> Shape -> Shape
 pullUp h shape =
     case shape of
-        Shape x y z rr rp ry s a n (Group shapes) ->
+        Shape x y z rr rp ry s a n mf (Group shapes) ->
             shapes
                 |> List.map (pullUp h)
                 |> Group
-                |> Shape x y z rr rp ry s a n
+                |> Shape x y z rr rp ry s a n mf
 
-        Shape x y z rr rp ry s a n (Circle c r) ->
-            Shape x y (z + h / 2) rr rp ry s a n (Cylinder c r h)
+        Shape x y z rr rp ry s a n mf (Circle c r) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (Cylinder c r h)
 
-        Shape x y z rr rp ry s a n (Square c r) ->
+        Shape x y z rr rp ry s a n mf (Square c r) ->
             if h == r then
-                Shape x y (z + h / 2) rr rp ry s a n (Cube c r)
+                Shape x y (z + h / 2) rr rp ry s a n mf (Cube c r)
 
             else
-                Shape x y (z + h / 2) rr rp ry s a n (Block c r r h)
+                Shape x y (z + h / 2) rr rp ry s a n mf (Block c r r h)
 
-        Shape x y z rr rp ry s a n (Rectangle c wb hb) ->
-            Shape x y (z + h / 2) rr rp ry s a n (Block c wb hb h)
+        Shape x y z rr rp ry s a n mf (Rectangle c wb hb) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (Block c wb hb h)
 
-        Shape x y z rr rp ry s a n (Triangle c size) ->
-            Shape x y (z + h / 2) rr rp ry s a n (Prism c size h)
+        Shape x y z rr rp ry s a n mf (Triangle c size) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (Prism c size h)
 
-        Shape x y z rr rp ry s a n (Snake c p) ->
-            Shape x y z rr rp ry s a n (Wall c h (p |> List.map (\( px, py, pz ) -> ( px, py, pz + h / 2 ))))
+        Shape x y z rr rp ry s a n mf (Snake c p) ->
+            Shape x y z rr rp ry s a n mf (Wall c h (p |> List.map (\( px, py, pz ) -> ( px, py, pz + h / 2 ))))
 
-        Shape x y z rr rp ry s a n (Polygon c points) ->
-            Shape x y (z + h / 2) rr rp ry s a n (ExtrudedPolygon c h points)
+        Shape x y z rr rp ry s a n mf (Polygon c points) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (ExtrudedPolygon c h points)
 
         _ ->
             shape
@@ -2037,7 +2045,7 @@ You can use [`scale`](#scale) to make the words bigger or smaller.
 -}
 words : Color -> String -> Shape
 words color string =
-    Shape 0 0 0 0 0 0 1 1 "" (Words color string)
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Words color string)
 
 
 {-| Name a shape. This lets you set a name for a shape, so you can detect when
@@ -2065,8 +2073,8 @@ it is clicked.
 
 -}
 withName : String -> Shape -> Shape
-withName n (Shape x y z rx ry rz s o _ f) =
-    Shape x y z rx ry rz s o n f
+withName n (Shape x y z rx ry rz s o _ mf f) =
+    Shape x y z rx ry rz s o n mf f
 
 
 
@@ -2091,8 +2099,8 @@ withName n (Shape x y z rx ry rz s o _ f) =
 
 -}
 move : Number -> Number -> Number -> Shape -> Shape
-move dx dy dz (Shape x y z rr rp ry s o n f) =
-    Shape (x + dx) (y + dy) (z + dz) rr rp ry s o n f
+move dx dy dz (Shape x y z rr rp ry s o n mf f) =
+    Shape (x + dx) (y + dy) (z + dz) rr rp ry s o n mf f
 
 
 {-| Move the `x` coordinate of a shape by some amount. Here is a square that
@@ -2112,8 +2120,8 @@ Using `moveX` feels a bit nicer here because the movement may be positive or neg
 
 -}
 moveX : Number -> Shape -> Shape
-moveX dx (Shape x y z rr rp ry s o n f) =
-    Shape (x + dx) y z rr rp ry s o n f
+moveX dx (Shape x y z rr rp ry s o n mf f) =
+    Shape (x + dx) y z rr rp ry s o n mf f
 
 
 {-| Move the `y` coordinate of a shape by some amount. Maybe you want to make
@@ -2137,15 +2145,15 @@ top of the screen, since the values are negative sometimes.
 
 -}
 moveY : Number -> Shape -> Shape
-moveY dy (Shape x y z rr rp ry s o n f) =
-    Shape x (y + dy) z rr rp ry s o n f
+moveY dy (Shape x y z rr rp ry s o n mf f) =
+    Shape x (y + dy) z rr rp ry s o n mf f
 
 
 {-| Move the `z` coordinate of a shape by some amount:
 -}
 moveZ : Number -> Shape -> Shape
-moveZ dz (Shape x y z rr rp ry s o n f) =
-    Shape x y (z + dz) rr rp ry s o n f
+moveZ dz (Shape x y z rr rp ry s o n mf f) =
+    Shape x y (z + dz) rr rp ry s o n mf f
 
 
 {-| Move a shape along a path, specified by a list of coordinate-pairs,
@@ -2158,7 +2166,7 @@ So in the example below, the circle is moved halfway on the path:
 
 -}
 moveAlong : List ( Number, Number, Number ) -> Number -> Shape -> Shape
-moveAlong coords amount ((Shape x y z rr rp ry s o n f) as shape) =
+moveAlong coords amount ((Shape x y z rr rp ry s o n mf f) as shape) =
     let
         totalLength =
             case coords of
@@ -2211,7 +2219,7 @@ moveAlong coords amount ((Shape x y z rr rp ry s o n f) as shape) =
                             ( ( x1, y1, z1 ), amount * totalLength )
                         |> Tuple.first
     in
-    Shape (x + nx) (y + ny) (z + nz) rr rp ry s o n f
+    Shape (x + nx) (y + ny) (z + nz) rr rp ry s o n mf f
 
 
 {-| Move a shape along a path, just like with moveAlong, but by adding the first
@@ -2249,8 +2257,8 @@ be larger, you could say:
 
 -}
 scale : Number -> Shape -> Shape
-scale ns (Shape x y z rr rp ry s o n f) =
-    Shape x y z rr rp ry (s * ns) o n f
+scale ns (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z rr rp ry (s * ns) o n mf f
 
 
 {-| Rotate shapes in degrees.
@@ -2268,8 +2276,8 @@ The degrees go **counter-clockwise** to match the direction of the
 
 -}
 rotate : Number -> Shape -> Shape
-rotate da (Shape x y z rr rp ry s o n f) =
-    Shape x y z (rr + da) rp ry s o n f
+rotate da (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z (rr + da) rp ry s o n mf f
 
 
 {-| Rotate shapes in degrees, along the X axis:
@@ -2286,8 +2294,8 @@ rotate da (Shape x y z rr rp ry s o n f) =
 
 -}
 roll : Number -> Shape -> Shape
-roll dr (Shape x y z rr rp ry s o n f) =
-    Shape x y z (rr + dr) rp ry s o n f
+roll dr (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z (rr + dr) rp ry s o n mf f
 
 
 {-| Rotate shapes in degrees, along the Y axis:
@@ -2304,8 +2312,8 @@ roll dr (Shape x y z rr rp ry s o n f) =
 
 -}
 pitch : Number -> Shape -> Shape
-pitch dp (Shape x y z rr rp ry s o n f) =
-    Shape x y z rr (rp + dp) ry s o n f
+pitch dp (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z rr (rp + dp) ry s o n mf f
 
 
 {-| Rotate shapes in degrees, along the Z axis:
@@ -2322,8 +2330,8 @@ pitch dp (Shape x y z rr rp ry s o n f) =
 
 -}
 yaw : Number -> Shape -> Shape
-yaw dy (Shape x y z rr rp ry s o n f) =
-    Shape x y z rr rp (ry + dy) s o n f
+yaw dy (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z rr rp (ry + dy) s o n mf f
 
 
 {-| Fade a shape. This lets you make shapes see-through or even completely
@@ -2345,8 +2353,8 @@ and `1` is completely solid.
 
 -}
 fade : Number -> Shape -> Shape
-fade o (Shape x y z rr rp ry s _ n f) =
-    Shape x y z rr rp ry s o n f
+fade o (Shape x y z rr rp ry s _ n mf f) =
+    Shape x y z rr rp ry s o n mf f
 
 
 {-| -}
@@ -2618,7 +2626,7 @@ colorClamp number =
 {-| Finds out where named shapes are within a scene (another shape, maybe a group).
 -}
 whereIs : String -> Shape -> List ( Number, Number, Number )
-whereIs name (Shape x y z rx ry rz s _ otherName form) =
+whereIs name (Shape x y z rx ry rz s _ otherName maybeFrame form) =
     let
         transformCoords ( x_, y_, z_ ) =
             let
@@ -2649,14 +2657,14 @@ whereIs name (Shape x y z rx ry rz s _ otherName form) =
 {-| Returns the weight of a shape as a Mass value (set with `withWeigth`).
 -}
 weightOf : Shape -> Mass
-weightOf (Shape _ _ _ _ _ _ _ _ _ _) =
+weightOf (Shape _ _ _ _ _ _ _ _ _ _ _) =
     Mass.kilograms 0.1
 
 
 {-| Returns the position of a shape, as a pair (x, y, z).
 -}
 positionOf : Shape -> ( Number, Number, Number )
-positionOf (Shape x y z _ _ _ _ _ _ _) =
+positionOf (Shape x y z _ _ _ _ _ _ _ _) =
     ( x, y, z )
 
 
@@ -2671,7 +2679,7 @@ center =
 TODO: Needs a refactor where offset centers are taken into account within a group.
 -}
 extent : Shape -> Number
-extent (Shape _ _ _ _ _ _ _ _ _ form) =
+extent (Shape _ _ _ _ _ _ _ _ _ maybeFrame form) =
     case form of
         Circle _ size ->
             size
@@ -2788,7 +2796,7 @@ means from the center of the object to its edge (a "radius"), so it can directly
 be used in calculations from the origin of the objects.
 -}
 extents : Shape -> ( Number, Number, Number )
-extents (Shape _ _ _ _ _ _ _ _ _ form) =
+extents (Shape _ _ _ _ _ _ _ _ _ maybeFrame form) =
     case form of
         Circle _ size ->
             ( size, size, 0 )
@@ -2937,7 +2945,7 @@ render cam { screen, font } shapes =
             , entities =
                 case font of
                     Nothing ->
-                        []
+                        List.map entity shapes
 
                     Just f ->
                         List.map (entityWithFont f) shapes
@@ -3021,15 +3029,15 @@ material color roughness =
 {-| Add a 3D shape to a Scene3D scene as an entity.
 -}
 entity : Shape -> Entity Shape
-entity (Shape x y z rr rp ry s alpha _ form) =
+entity (Shape x y z rr rp ry s alpha _ mf form) =
     renderForm Nothing form
-        |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
+        |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
 
 
 entityWithFont : Font -> Shape -> Entity Shape
-entityWithFont font (Shape x y z rr rp ry s alpha _ form) =
+entityWithFont font (Shape x y z rr rp ry s alpha _ mf form) =
     renderForm (Just font) form
-        |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s
+        |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
 
 
 renderForm : Maybe Font -> Form -> Entity Shape
@@ -3642,13 +3650,18 @@ type alias Material =
     { color : Color, roughness : Number }
 
 
-transform : Translation -> Rotation -> Scale -> Entity Shape -> Entity Shape
-transform t r s =
-    Scene3d.rotateAround Axis3d.x (Angle.degrees r.x)
-        >> Scene3d.rotateAround Axis3d.y (Angle.degrees r.y)
-        >> Scene3d.rotateAround Axis3d.z (Angle.degrees r.z)
-        >> Scene3d.scaleAbout Point3d.origin s
-        >> Scene3d.translateBy (Vector3d.centimeters t.x t.y t.z)
+transform : Translation -> Rotation -> Scale -> Maybe Frame -> Entity Shape -> Entity Shape
+transform t r s mf =
+    case mf of
+        Nothing ->
+            Scene3d.rotateAround Axis3d.x (Angle.degrees r.x)
+                >> Scene3d.rotateAround Axis3d.y (Angle.degrees r.y)
+                >> Scene3d.rotateAround Axis3d.z (Angle.degrees r.z)
+                >> Scene3d.scaleAbout Point3d.origin s
+                >> Scene3d.translateBy (Vector3d.centimeters t.x t.y t.z)
+
+        Just f ->
+            Scene3d.placeIn f
 
 
 
@@ -3678,7 +3691,7 @@ withShape shape =
 
 
 bodyFromShape : Shape -> Body Shape
-bodyFromShape ((Shape x y z rr rp ry s a n form) as shape) =
+bodyFromShape ((Shape x y z rr rp ry s a n maybeFrame form) as shape) =
     case form of
         Circle _ size ->
             blockBody x y z size size 0.001 shape
@@ -3785,31 +3798,18 @@ shapesFromWorld world =
 shapeFromBody : Body Shape -> Shape
 shapeFromBody body =
     let
-        (Shape _ _ _ _ _ _ s a n form) =
+        (Shape x y z rr rp ry s a n _ form) =
             Body.data body
 
         frame =
             Body.frame body
 
-        { x, y, z } =
-            Frame3d.originPoint frame |> Point3d.toMeters
-
-        m_1 =
-            Frame3d.xDirection frame |> Direction3d.unwrap
-
-        m_2 =
-            Frame3d.yDirection frame |> Direction3d.unwrap
-
-        m_3 =
-            Frame3d.zDirection frame |> Direction3d.unwrap
-
-        rr =
-            atan2 m_3.y m_3.z |> Angle.radians |> Angle.inDegrees
-
-        rp =
-            atan2 -m_3.x (sqrt (m_1.x ^ 2 + m_2.x ^ 2)) |> Angle.radians |> Angle.inDegrees |> (*) -1
-
-        ry =
-            atan2 m_2.x m_1.x |> Angle.radians |> Angle.inDegrees |> (*) -1
+        unsafeFrame =
+            Frame3d.unsafe
+                { originPoint = Frame3d.originPoint frame |> Point3d.unwrap |> Point3d.unsafe
+                , xDirection = Frame3d.xDirection frame |> Direction3d.unwrap |> Direction3d.unsafe
+                , yDirection = Frame3d.yDirection frame |> Direction3d.unwrap |> Direction3d.unsafe
+                , zDirection = Frame3d.zDirection frame |> Direction3d.unwrap |> Direction3d.unsafe
+                }
     in
-    Shape (x * 100) (y * 100) (z * 100) rr rp ry s a n form
+    Shape x y z rr rp ry s a n (Just unsafeFrame) form
