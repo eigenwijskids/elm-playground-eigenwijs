@@ -265,6 +265,7 @@ the current audio time. This `audio` field is also available in the computer
 parameter passed to your update function. It is a `Maybe AudioContext`, to be
 able to still run your program even when the context is unavailable. (That can
 happen if initialisation of the context via parsed program flags failed.)
+
 -}
 type alias Computer =
     { mouse : Mouse
@@ -273,6 +274,7 @@ type alias Computer =
     , time : Time
     , audio : Audio
     }
+
 
 
 -- MOUSE
@@ -633,6 +635,7 @@ beginOfTime =
     Time (Time.millisToPosix 0)
 
 
+
 -- AUDIO
 
 
@@ -644,6 +647,7 @@ type alias Audio =
     { time : Float
     , available : Bool
     }
+
 
 
 -- ANIMATION
@@ -862,8 +866,11 @@ gameInit initialMemory flags =
     let
         audioContext =
             case flags |> D.decodeValue (D.field "audiocontext" D.value) of
-                 Ok v -> WebAudio.Context.from v
-                 Err _ -> Nothing
+                Ok v ->
+                    WebAudio.Context.from v
+
+                Err _ ->
+                    Nothing
     in
     ( Game audioContext E.Visible initialMemory initialComputer
     , Task.perform GotViewport Dom.getViewport
@@ -874,7 +881,7 @@ gameInit initialMemory flags =
 -}
 gameView : (Computer -> memory -> List (Shape Msg)) -> Game memory -> Html.Html Msg
 gameView viewMemory (Game audioContext _ memory computer) =
-    render computer.screen (viewMemory {computer | audio = audioFrom audioContext} memory)
+    render computer.screen (viewMemory { computer | audio = audioFrom audioContext } memory)
 
 
 
@@ -945,7 +952,7 @@ gameUpdate : (Computer -> memory -> memory) -> Msg -> Game memory -> Game memory
 gameUpdate updateMemory msg (Game audioContext vis memory computer) =
     case msg of
         Tick time ->
-            Game audioContext vis (updateMemory {computer | audio = audioFrom audioContext} memory) <|
+            Game audioContext vis (updateMemory { computer | audio = audioFrom audioContext } memory) <|
                 if computer.mouse.click then
                     { computer | time = Time time, mouse = mouseClick False computer.mouse }
 
@@ -2933,17 +2940,19 @@ renderOnClick m =
 
 -- AUDIO
 
+
 audioFrom : Maybe AudioContext -> Audio
 audioFrom maybeContext =
-  case maybeContext of
-    Nothing ->
-      { time = 0
-      , available = False
-      }
-    Just context ->
-      { time = WebAudio.Context.currentTime context
-      , available = True
-      }
+    case maybeContext of
+        Nothing ->
+            { time = 0
+            , available = False
+            }
+
+        Just context ->
+            { time = WebAudio.Context.currentTime context
+            , available = True
+            }
 
 
 {-| The AudioPort connects our Elm game to a piece of javascript in the html file the game is embedded in,
@@ -2975,9 +2984,9 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
 
         update msg ((Game audioContext vis memory computer) as model) =
             ( gameUpdate updateMemory msg model
-            , audioForMemory {computer | audio = audioFrom audioContext} memory
-              |> Json.Encode.list WebAudio.encode
-              |> toWebAudio
+            , audioForMemory { computer | audio = audioFrom audioContext } memory
+                |> Json.Encode.list WebAudio.encode
+                |> toWebAudio
             )
     in
     Browser.document

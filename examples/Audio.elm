@@ -25,7 +25,7 @@ view computer memory =
     [ words black "Some letter keys have frequencies assigned, and trigger an oscillator when pressed" |> scale 2
     , words orange "TODO: The AudioContext must be created or resumed after a user gesture on the page, otherwise it won't run." |> moveDown 50
     , words black "Build: elm make --output audio.js Audio.elm" |> moveDown 80
-    , words black "Serve suggestion: python -m SimpleHTTPServer 8012" |> moveDown 100
+    , words black "Serve suggestion: python -m http.server 8012" |> moveDown 100
     , words black "Navigate to: http://localhost:8012/Audio.html" |> moveDown 120
     ]
 
