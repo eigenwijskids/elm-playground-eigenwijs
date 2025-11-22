@@ -194,6 +194,7 @@ import Length exposing (Length, Meters, centimeters, meters)
 import Mass exposing (Mass)
 import MogeeFont
 import Physics.Body as Body exposing (Body)
+import Physics.Shape as Physics
 import Physics.World as World exposing (World)
 import Pixels exposing (Pixels, pixels)
 import Point2d exposing (Point2d)
@@ -2661,7 +2662,7 @@ weightOf (Shape _ _ _ _ _ _ _ _ _ _ _) =
     Mass.kilograms 0.1
 
 
-{-| Returns the position of a shape, as a pair (x, y, z).
+{-| Returns the position of a shape, as a tuple (x, y, z).
 -}
 positionOf : Shape -> ( Number, Number, Number )
 positionOf (Shape x y z _ _ _ _ _ _ _ _) =
@@ -3497,12 +3498,18 @@ renderSnake color points =
 
 renderPrism : Color -> Number -> Number -> Entity Shape
 renderPrism color size height =
+    Scene3d.Mesh.indexedFacets (prismMesh size height)
+        |> Scene3d.Mesh.cullBackFaces
+        |> withColor color
+
+
+prismMesh size height =
     let
         s =
             size / 100
 
-        h =
-            height / 100
+        hh =
+            0.5 * height / 100
 
         negativeZVector =
             Direction3d.negativeZ |> Direction3d.toVector
@@ -3511,44 +3518,40 @@ renderPrism color size height =
             Direction3d.positiveZ |> Direction3d.toVector
 
         p1 =
-            Point3d.unsafe { x = 0, y = s, z = 0 }
+            Point3d.unsafe { x = 0, y = s, z = -hh }
 
         p2 =
-            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = 0 }
+            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = -hh }
 
         p3 =
-            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = 0 }
+            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = -hh }
 
         p4 =
-            Point3d.unsafe { x = 0, y = s, z = h }
+            Point3d.unsafe { x = 0, y = s, z = hh }
 
         p5 =
-            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = h }
+            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = hh }
 
         p6 =
-            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = h }
+            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = hh }
 
         triangleBottom =
-            [ ( p1, p2, p3 ) ]
+            [ ( 0, 1, 2 ) ]
 
         triangleTop =
-            [ ( p6, p5, p4 ) ]
+            [ ( 5, 4, 3 ) ]
 
         side1 =
-            [ ( p2, p1, p5 ), ( p1, p4, p5 ) ]
+            [ ( 1, 0, 4 ), ( 0, 3, 4 ) ]
 
         side2 =
-            [ ( p3, p2, p6 ), ( p2, p5, p6 ) ]
+            [ ( 2, 1, 5 ), ( 1, 4, 5 ) ]
 
         side3 =
-            [ ( p1, p3, p4 ), ( p3, p6, p4 ) ]
-
-        triangularMesh =
-            TriangularMesh.triangles (List.concat [ triangleTop, side1, side2, side3, triangleBottom ])
+            [ ( 0, 2, 3 ), ( 2, 5, 3 ) ]
     in
-    Scene3d.Mesh.indexedFacets triangularMesh
-        |> Scene3d.Mesh.cullBackFaces
-        |> withColor color
+    TriangularMesh.indexed (Array.fromList [ p1, p2, p3, p4, p5, p6 ])
+        (List.concat [ triangleTop, side1, side2, side3, triangleBottom ])
 
 
 
@@ -3716,50 +3719,177 @@ withShape shape =
 
 bodyFromShape : Shape -> Body Shape
 bodyFromShape ((Shape x y z rr rp ry s a n maybeFrame form) as shape) =
-    case form of
-        Circle _ size ->
-            blockBody x y z size size 0.001 shape
+    let
+        transformBody =
+            Body.rotateAround Axis3d.x (Angle.degrees rr)
+                >> Body.rotateAround Axis3d.y (Angle.degrees rp)
+                >> Body.rotateAround Axis3d.z (Angle.degrees ry)
+                >> Body.translateBy (Vector3d.centimeters x y z)
 
-        Triangle _ size ->
-            blockBody x y z size size 0.001 shape
+        blockBody w d h =
+            Body.block
+                (Block3d.centeredOn Frame3d.atOrigin
+                    ( Length.centimeters w
+                    , Length.centimeters d
+                    , Length.centimeters h
+                    )
+                )
+                shape
+                |> transformBody
 
-        Square _ size ->
-            blockBody x y z size size 0.001 shape
-
-        Rectangle _ w d ->
-            blockBody x y z w d 0.001 shape
-
-        Sphere _ radius ->
-            Body.sphere (Sphere3d.atOrigin (Length.centimeters radius)) shape
-                |> Body.translateBy (Vector3d.centimeters x y z)
-
-        Cube _ size ->
-            blockBody x y z size size size shape
-
-        Cylinder _ radius height ->
+        cylinderBody radius height =
             Body.cylinder
                 (Cylinder3d.centeredOn
                     Point3d.origin
                     Direction3d.z
-                    { radius = Length.centimeters radius
-                    , length = Length.centimeters height
+                    { radius = Length.centimeters (s * radius)
+                    , length = Length.centimeters (s * height)
                     }
                 )
                 shape
-                |> Body.translateBy (Vector3d.centimeters x y z)
+                |> transformBody
+
+        prismBody radius height =
+            shape
+                |> (prismMesh (s * radius) (s * height)
+                        |> Physics.unsafeConvex
+                        |> List.singleton
+                        |> Body.compound
+                   )
+                |> transformBody
+    in
+    case form of
+        Circle _ size ->
+            cylinderBody size 0.001
+
+        Triangle _ size ->
+            cylinderBody size 0.001
+
+        Square _ size ->
+            blockBody size size 0.001
+
+        Rectangle _ width depth ->
+            blockBody width depth 0.001
+
+        Sphere _ radius ->
+            Body.sphere (Sphere3d.atOrigin (Length.centimeters radius)) shape
+                |> transformBody
+
+        Cube _ size ->
+            blockBody size size size
+
+        Block _ width depth height ->
+            blockBody width depth height
+
+        Cylinder _ radius height ->
+            cylinderBody radius height
+
+        Prism _ radius height ->
+            prismBody radius height
+
+        Group shapes ->
+            shape
+                |> (shapes
+                        |> flattenGroup
+                        -- needed as compound does not support nested groups
+                        |> List.map geometryFromShape
+                        |> Body.compound
+                   )
+                |> transformBody
 
         _ ->
             let
                 ( w, d, h ) =
                     extents shape
             in
-            blockBody x y z w d h shape
+            blockBody w d h
 
 
-blockBody x y z w d h shape =
-    Body.block (Block3d.centeredOn Frame3d.atOrigin ( Length.centimeters w, Length.centimeters d, Length.centimeters h ))
-        shape
-        |> Body.translateBy (Vector3d.centimeters x y z)
+flattenGroup shapes =
+    shapes
+        |> List.foldl flattenShape []
+
+
+flattenShape : Shape -> List Shape -> List Shape
+flattenShape ((Shape x y z rr rp ry s _ _ maybeFrame form) as shape) acc =
+    case form of
+        Group shapes ->
+            shapes
+                |> flattenGroup
+                |> List.map (move x y z >> roll rr >> pitch rp >> yaw ry >> scale s)
+                |> List.append acc
+
+        _ ->
+            shape :: acc
+
+
+geometryFromShape : Shape -> Physics.Shape
+geometryFromShape ((Shape x y z rr rp ry s a n maybeFrame form) as shape) =
+    let
+        blockShape w d h =
+            Block3d.centeredOn Frame3d.atOrigin
+                ( Length.centimeters (s * w)
+                , Length.centimeters (s * d)
+                , Length.centimeters (s * h)
+                )
+                |> Block3d.rotateAround Axis3d.x (Angle.degrees rr)
+                |> Block3d.rotateAround Axis3d.y (Angle.degrees rp)
+                |> Block3d.rotateAround Axis3d.z (Angle.degrees ry)
+                |> Block3d.translateBy (Vector3d.centimeters x y z)
+                |> Physics.block
+
+        cylinderShape size height =
+            Cylinder3d.centeredOn
+                Point3d.origin
+                Direction3d.z
+                { radius = Length.centimeters (s * size)
+                , length = Length.centimeters (s * height)
+                }
+                |> Cylinder3d.rotateAround Axis3d.x (Angle.degrees rr)
+                |> Cylinder3d.rotateAround Axis3d.y (Angle.degrees rp)
+                |> Cylinder3d.rotateAround Axis3d.z (Angle.degrees ry)
+                |> Cylinder3d.translateBy (Vector3d.centimeters x y z)
+                |> Physics.cylinder 12
+    in
+    case form of
+        Circle _ size ->
+            cylinderShape size 0.001
+
+        Triangle _ size ->
+            cylinderShape size 0.001
+
+        Square _ size ->
+            blockShape size size 0.001
+
+        Rectangle _ width depth ->
+            blockShape width depth 0.001
+
+        Sphere _ radius ->
+            Sphere3d.atOrigin (Length.centimeters (s * radius))
+                |> Sphere3d.translateBy (Vector3d.centimeters x y z)
+                |> Sphere3d.rotateAround Axis3d.x (Angle.degrees rr)
+                |> Sphere3d.rotateAround Axis3d.y (Angle.degrees rp)
+                |> Sphere3d.rotateAround Axis3d.z (Angle.degrees ry)
+                |> Physics.sphere
+
+        Cube _ size ->
+            blockShape size size size
+
+        Block _ width depth height ->
+            blockShape width depth height
+
+        Cylinder _ radius height ->
+            cylinderShape radius height
+
+        Prism _ radius height ->
+            cylinderShape radius height
+
+        _ ->
+            let
+                ( w, d, h ) =
+                    extents shape
+            in
+            blockShape w d h
 
 
 {-| Add dynamic shapes to the simulated world. These shapes will have weight.
