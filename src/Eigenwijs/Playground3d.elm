@@ -19,13 +19,15 @@ module Eigenwijs.Playground3d exposing
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
     , networkGame, networkGameWithCamera, Connection
-    , isometric, orbit, eyesAt, lookAt, pan, tilt, zoom
-    , withName, whereIs, center, extent, extents
+    , isometric, orbit, viewFrom, eyesAt, lookAt, pan, tilt, shift, zoom
+    , withName, nameOf, whereIs, center, extent, extents
     , positionOf
     , emptyWorld, withGravity, withShapes, withDynamicShapes
     , withWeight, kilograms, grams
     , weightOf, inKilograms, inGrams
-    , simulate, simulateFor, shapesFromWorld
+    , simulate, simulateFor, shapesFromWorld, shapeNamed
+    , updateWorldShapes, updateShapeNamed
+    , pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -145,14 +147,14 @@ The following primitives work in a (slightly) different way:
 @docs networkGame, networkGameWithCamera, Connection
 
 
-# Playground Cameras
+# Cameras (views)
 
-@docs isometric, orbit, eyesAt, lookAt, pan, tilt, zoom
+@docs isometric, orbit, viewFrom, eyesAt, lookAt, pan, tilt, shift, zoom
 
 
 # Naming and calculations
 
-@docs withName, whereIs, center, extent, extents
+@docs withName, nameOf, whereIs, center, extent, extents
 @docs positionOf
 
 
@@ -161,7 +163,9 @@ The following primitives work in a (slightly) different way:
 @docs emptyWorld, withGravity, withShapes, withDynamicShapes
 @docs withWeight, kilograms, grams
 @docs weightOf, inKilograms, inGrams
-@docs simulate, simulateFor, shapesFromWorld
+@docs simulate, simulateFor, shapesFromWorld, shapeNamed
+@docs updateWorldShapes, updateShapeNamed
+@docs pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown
 
 -}
 
@@ -182,6 +186,7 @@ import Direction3d exposing (Direction3d)
 import Duration exposing (Duration)
 import Eigenwijs.Playground as Playground2d
 import Eigenwijs.Playground3d.Shape as Shape
+import Force exposing (Force)
 import Frame3d exposing (Frame3d)
 import Html
 import Html.Attributes as H
@@ -194,6 +199,7 @@ import Length exposing (Length, Meters, centimeters, meters)
 import Mass exposing (Mass)
 import MogeeFont
 import Physics.Body as Body exposing (Body)
+import Physics.Coordinates
 import Physics.Shape as Physics
 import Physics.World as World exposing (World)
 import Pixels exposing (Pixels, pixels)
@@ -1169,7 +1175,7 @@ type alias GameMsg =
 -}
 type alias Camera =
     { mode : CameraMode
-    , target : Point3d Meters Shape
+    , target : Maybe (Point3d Meters Shape)
     }
 
 
@@ -1180,13 +1186,14 @@ type CameraMode
     | Isometric Length Length
     | Orbit Number Number Number Angle
     | PanTiltZoomFov (Point3d Meters Shape) Angle Angle Number Angle
+    | Framed Frame Number Angle
 
 
 {-| Create an isometric camera
 -}
 isometric : Camera
 isometric =
-    Camera (Isometric (Length.meters 10) (Length.meters 5)) Point3d.origin
+    Camera (Isometric (Length.meters 10) (Length.meters 5)) (Just Point3d.origin)
 
 
 {-| Create a camera orbiting the target set with `lookAt`, with a specified
@@ -1194,21 +1201,21 @@ azimuth, elevation (in degrees) and distance
 -}
 orbit : Number -> Number -> Number -> Camera
 orbit azimuth elevation distance =
-    Camera (Orbit azimuth elevation distance (Angle.degrees 40)) Point3d.origin
+    Camera (Orbit azimuth elevation distance (Angle.degrees 40)) (Just Point3d.origin)
 
 
 {-| Create a camera looking from a point x y z, towards the origin (0, 0, 0)
 -}
 eyesAt : Number -> Number -> Number -> Camera
 eyesAt x y z =
-    Camera (FirstPerson (Point3d.centimeters x y z) (Angle.degrees 40)) Point3d.origin
+    Camera (FirstPerson (Point3d.centimeters x y z) (Angle.degrees 40)) (Just Point3d.origin)
 
 
 {-| Modify a camera to look at a specific point x y z
 -}
 lookAt : Number -> Number -> Number -> Camera -> Camera
 lookAt x y z cam =
-    { cam | target = Point3d.centimeters x y z }
+    { cam | target = Just (Point3d.centimeters x y z) }
 
 
 {-| Pan the camera for a specified number of degrees.
@@ -1229,6 +1236,9 @@ pan angle cam =
 
                 PanTiltZoomFov position p t z fov ->
                     PanTiltZoomFov position (Angle.degrees angle) t z fov
+
+                Framed frame z fov ->
+                    Framed (frame |> Frame3d.rotateAround (Frame3d.zAxis frame) (Angle.degrees angle)) z fov
     }
 
 
@@ -1250,6 +1260,33 @@ tilt angle cam =
 
                 PanTiltZoomFov position p t z fov ->
                     PanTiltZoomFov position p (Angle.degrees angle) z fov
+
+                Framed frame z fov ->
+                    Framed (frame |> Frame3d.rotateAround (Frame3d.yAxis frame) (Angle.degrees angle)) z fov
+    }
+
+
+{-| Shift the camera along the x, y, and z axis (in centimeters).
+-}
+shift : Number -> Number -> Number -> Camera -> Camera
+shift x y z cam =
+    { cam
+        | mode =
+            case cam.mode of
+                FirstPerson position fov ->
+                    FirstPerson (position |> Point3d.translateBy (Vector3d.centimeters x y z)) fov
+
+                Isometric distance height ->
+                    PanTiltZoomFov (Point3d.origin |> Point3d.translateBy (Vector3d.centimeters x y z)) (Angle.degrees 0) (Angle.degrees 0) 1 (Angle.degrees 40)
+
+                Orbit azymuth elevation distance fov ->
+                    PanTiltZoomFov (Point3d.centimeters x y z) (Angle.degrees 0) (Angle.degrees 0) 1 fov
+
+                PanTiltZoomFov position p t zm fov ->
+                    PanTiltZoomFov (position |> Point3d.translateBy (Vector3d.centimeters x y zm)) p t z fov
+
+                Framed frame zm fov ->
+                    Framed (frame |> Frame3d.translateBy (Vector3d.centimeters x y z)) z fov
     }
 
 
@@ -1276,6 +1313,9 @@ zoom factor cam =
 
                     PanTiltZoomFov position p t z fov ->
                         PanTiltZoomFov position p t factor fov
+
+                    Framed frame _ fov ->
+                        Framed frame factor fov
         }
 
 
@@ -2076,6 +2116,11 @@ it is clicked.
 withName : String -> Shape -> Shape
 withName n (Shape x y z rx ry rz s o _ mf f) =
     Shape x y z rx ry rz s o n mf f
+
+
+nameOf : Shape -> String
+nameOf (Shape _ _ _ _ _ _ _ _ n _ _) =
+    n
 
 
 
@@ -2964,7 +3009,7 @@ camera cam =
                 { viewpoint =
                     Viewpoint3d.lookAt
                         { eyePoint = position
-                        , focalPoint = cam.target
+                        , focalPoint = cam.target |> Maybe.withDefault Point3d.origin
                         , upDirection = Direction3d.positiveZ
                         }
                 , verticalFieldOfView = fov
@@ -2972,7 +3017,11 @@ camera cam =
 
         Isometric distance height ->
             Camera3d.orthographic
-                { viewpoint = Viewpoint3d.isometric { focalPoint = cam.target, distance = distance }
+                { viewpoint =
+                    Viewpoint3d.isometric
+                        { focalPoint = cam.target |> Maybe.withDefault Point3d.origin
+                        , distance = distance
+                        }
                 , viewportHeight = height
                 }
 
@@ -2980,7 +3029,7 @@ camera cam =
             Camera3d.perspective
                 { viewpoint =
                     Viewpoint3d.orbit
-                        { focalPoint = cam.target
+                        { focalPoint = cam.target |> Maybe.withDefault Point3d.origin
                         , groundPlane = SketchPlane3d.xy
                         , azimuth = Angle.degrees azymuth
                         , elevation = Angle.degrees elevation
@@ -3000,6 +3049,29 @@ camera cam =
                                 |> Point3d.rotateAround Axis3d.z p
                                 |> Point3d.rotateAround Axis3d.y t
                         , upDirection = Direction3d.positiveZ
+                        }
+                , verticalFieldOfView =
+                    if z > 0 then
+                        Angle.degrees (Angle.inDegrees fov / z)
+
+                    else
+                        fov
+                }
+
+        Framed frame z fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.lookAt
+                        { eyePoint = frame |> Frame3d.originPoint
+                        , focalPoint =
+                            frame
+                                |> Frame3d.originPoint
+                                |> Point3d.translateBy
+                                    (frame
+                                        |> Frame3d.xDirection
+                                        |> Vector3d.withLength (Length.meters 10)
+                                    )
+                        , upDirection = frame |> Frame3d.zDirection
                         }
                 , verticalFieldOfView =
                     if z > 0 then
@@ -4000,3 +4072,109 @@ shapeFromBody body =
                 }
     in
     Shape x y z rr rp ry s a n (Just unsafeFrame) form
+
+
+type Action
+    = Push Force (Direction3d Physics.Coordinates.WorldCoordinates)
+
+
+pushForward : Number -> Action
+pushForward f =
+    Push (Force.newtons f) Direction3d.x
+
+
+pushBackward : Number -> Action
+pushBackward f =
+    Push (Force.newtons f) Direction3d.negativeX
+
+
+pushLeft : Number -> Action
+pushLeft f =
+    Push (Force.newtons f) Direction3d.negativeY
+
+
+pushRight : Number -> Action
+pushRight f =
+    Push (Force.newtons f) Direction3d.y
+
+
+pushUp : Number -> Action
+pushUp f =
+    Push (Force.newtons f) Direction3d.z
+
+
+pushDown : Number -> Action
+pushDown f =
+    Push (Force.newtons f) Direction3d.negativeZ
+
+
+{-| -}
+updateWorldShapes : (Shape -> List Action) -> World Shape -> World Shape
+updateWorldShapes shapeToActions world =
+    world
+        |> World.update
+            (\body ->
+                shapeToActions (Body.data body)
+                    |> List.foldl (\action acc -> applyAction action acc) body
+            )
+
+
+{-| -}
+updateShapeNamed : String -> List Action -> World Shape -> World Shape
+updateShapeNamed name actions world =
+    world
+        |> World.update
+            (\body ->
+                if nameOf (Body.data body) == name then
+                    actions
+                        |> List.foldl (\action acc -> applyAction action acc) body
+
+                else
+                    body
+            )
+
+
+applyAction : Action -> Body Shape -> Body Shape
+applyAction action body =
+    case action of
+        Push q d ->
+            Body.applyForce q d Point3d.origin body
+
+
+{-| Search the world for a shape with the specified name. Return `Nothing` if
+no shape is found, and `Just shape` when it was found. It returns only the
+first shape found.
+-}
+shapeNamed : String -> World Shape -> Maybe Shape
+shapeNamed name world =
+    world
+        |> World.keepIf (Body.data >> nameOf >> (==) name)
+        |> World.bodies
+        |> List.head
+        |> Maybe.map shapeFromBody
+
+
+{-| Return a camera with the location and orientation of the specified shape.
+As if the shape would be the eyes! 8)
+-}
+viewFrom : Shape -> Camera
+viewFrom (Shape x y z rr rp ry _ _ _ maybeFrame _) =
+    case maybeFrame of
+        Nothing ->
+            { mode =
+                Framed
+                    (Frame3d.atOrigin
+                        |> Frame3d.rotateAround Axis3d.x (Angle.degrees rr)
+                        |> Frame3d.rotateAround Axis3d.y (Angle.degrees rp)
+                        |> Frame3d.rotateAround Axis3d.z (Angle.degrees ry)
+                        |> Frame3d.translateBy (Vector3d.centimeters x y z)
+                    )
+                    1
+                    (Angle.degrees 40)
+            , target = Nothing
+            }
+
+        Just frame ->
+            { mode = Framed frame 1 (Angle.degrees 40)
+            , target = Nothing
+            }
