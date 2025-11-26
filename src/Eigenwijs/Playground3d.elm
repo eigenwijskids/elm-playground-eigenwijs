@@ -23,11 +23,17 @@ module Eigenwijs.Playground3d exposing
     , withName, nameOf, whereIs, center, extent, extents
     , positionOf
     , emptyWorld, withGravity, withShapes, withDynamicShapes
-    , withWeight, kilograms, grams
-    , weightOf, inKilograms, inGrams
     , simulate, simulateFor, shapesFromWorld, shapeNamed
+    , withWeight, withMass, kilograms, grams
+    , weightOf, massOf, inKilograms, inGrams
+    , withFriction, frictionOf
+    , withBounciness, bouncinessOf
     , updateWorldShapes, updateShapeNamed
-    , pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown
+    , moveTo, moveBy, moveIn, moveForward
+    , rotateAround
+    , pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown, push
+    , transform
+    , lockPositionTo, keepDistanceTo, hingeTo
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -160,12 +166,33 @@ The following primitives work in a (slightly) different way:
 
 # Physics
 
+
+## Physics world
+
 @docs emptyWorld, withGravity, withShapes, withDynamicShapes
-@docs withWeight, kilograms, grams
-@docs weightOf, inKilograms, inGrams
 @docs simulate, simulateFor, shapesFromWorld, shapeNamed
+
+
+## Physics shape properties
+
+@docs withWeight, withMass, kilograms, grams
+@docs weightOf, massOf, inKilograms, inGrams
+@docs withFriction, frictionOf
+@docs withBounciness, bouncinessOf
+
+
+## Physics updates and actions
+
 @docs updateWorldShapes, updateShapeNamed
-@docs pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown
+@docs moveTo, moveBy, moveIn, moveForward
+@docs rotateAround
+@docs pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown, push
+@docs transform
+
+
+## Physics constraints
+
+@docs lockPositionTo, keepDistanceTo, hingeTo
 
 -}
 
@@ -199,7 +226,9 @@ import Length exposing (Length, Meters, centimeters, meters)
 import Mass exposing (Mass)
 import MogeeFont
 import Physics.Body as Body exposing (Body)
+import Physics.Constraint
 import Physics.Coordinates
+import Physics.Material
 import Physics.Shape as Physics
 import Physics.World as World exposing (World)
 import Pixels exposing (Pixels, pixels)
@@ -216,7 +245,7 @@ import Sphere3d
 import Task
 import Time
 import TriangularMesh
-import Vector3d
+import Vector3d exposing (Vector3d)
 import Viewpoint3d exposing (Viewpoint3d)
 import WebGL.Texture
 
@@ -1644,15 +1673,30 @@ type Shape
         -- alpha
         String
         -- name to make shapes identifiable
-        (Maybe Frame)
+        (Maybe Physics)
         -- to avoid issues like gimbal lock with physics
-        -- if this is set, use it as the transform
+        -- if this is set, use its frame as the transform
         -- ignoring position and rotation values
         Form
 
 
+type alias Physics =
+    { frame : Frame
+    , constraints : List Constraint
+    , mass : Maybe Mass
+    , friction : Maybe Number
+    , bounciness : Maybe Number
+    }
+
+
 type alias Frame =
     Frame3d Meters Shape { defines : Shape }
+
+
+type Constraint
+    = LockedPositionTo String
+    | FixedDistanceTo String
+    | HingedTo String
 
 
 type Form
@@ -2118,6 +2162,9 @@ withName n (Shape x y z rx ry rz s o _ mf f) =
     Shape x y z rx ry rz s o n mf f
 
 
+{-| Return the name of the given shape; if no name was set it returns an empty
+string `""`.
+-}
 nameOf : Shape -> String
 nameOf (Shape _ _ _ _ _ _ _ _ n _ _) =
     n
@@ -2700,11 +2747,23 @@ whereIs name (Shape x y z rx ry rz s _ otherName maybeFrame form) =
                 []
 
 
-{-| Returns the weight of a shape as a Mass value (set with `withWeigth`).
+{-| Returns the weight of a shape as a Mass value (set with `withWeigth` or
+`withMass`).
 -}
 weightOf : Shape -> Mass
-weightOf (Shape _ _ _ _ _ _ _ _ _ _ _) =
-    Mass.kilograms 0.1
+weightOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .mass
+        |> Maybe.withDefault (Mass.kilograms 0.1)
+
+
+{-| Returns the mass of a shape as a Mass value (set with `withMass`).
+-}
+massOf : Shape -> Mass
+massOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .mass
+        |> Maybe.withDefault (Mass.kilograms 0.1)
 
 
 {-| Returns the position of a shape, as a tuple (x, y, z).
@@ -3104,13 +3163,13 @@ material color roughness =
 entity : Shape -> Entity Shape
 entity (Shape x y z rr rp ry s alpha _ mf form) =
     renderForm Nothing form
-        |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
+        |> transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
 
 
 entityWithFont : Font -> Shape -> Entity Shape
 entityWithFont font (Shape x y z rr rp ry s alpha _ mf form) =
     renderForm (Just font) form
-        |> transform { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
+        |> transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
 
 
 renderForm : Maybe Font -> Form -> Entity Shape
@@ -3725,9 +3784,9 @@ type alias Material =
     { color : Color, roughness : Number }
 
 
-transform : Translation -> Rotation -> Scale -> Maybe Frame -> Entity Shape -> Entity Shape
-transform t r s mf =
-    case mf of
+transformEntity : Translation -> Rotation -> Scale -> Maybe Physics -> Entity Shape -> Entity Shape
+transformEntity t r s physics =
+    case physics of
         Nothing ->
             Scene3d.rotateAround Axis3d.x (Angle.degrees r.x)
                 >> Scene3d.rotateAround Axis3d.y (Angle.degrees r.y)
@@ -3735,8 +3794,8 @@ transform t r s mf =
                 >> Scene3d.scaleAbout Point3d.origin s
                 >> Scene3d.translateBy (Vector3d.centimeters t.x t.y t.z)
 
-        Just f ->
-            Scene3d.placeIn f
+        Just { frame } ->
+            Scene3d.placeIn frame
 
 
 
@@ -3790,13 +3849,32 @@ withShape shape =
 
 
 bodyFromShape : Shape -> Body Shape
-bodyFromShape ((Shape x y z rr rp ry s a n maybeFrame form) as shape) =
+bodyFromShape ((Shape x y z rr rp ry s a n maybePhysics form) as shape) =
     let
+        applyMaterial =
+            case maybePhysics of
+                Nothing ->
+                    identity
+
+                Just physics ->
+                    case ( physics.friction, physics.bounciness ) of
+                        ( Nothing, Nothing ) ->
+                            identity
+
+                        _ ->
+                            Body.withMaterial
+                                (Physics.Material.custom
+                                    { friction = physics.friction |> Maybe.withDefault 0.3
+                                    , bounciness = physics.bounciness |> Maybe.withDefault 0
+                                    }
+                                )
+
         transformBody =
             Body.rotateAround Axis3d.x (Angle.degrees rr)
                 >> Body.rotateAround Axis3d.y (Angle.degrees rp)
                 >> Body.rotateAround Axis3d.z (Angle.degrees ry)
                 >> Body.translateBy (Vector3d.centimeters x y z)
+                >> applyMaterial
 
         blockBody w d h =
             Body.block
@@ -3981,15 +4059,110 @@ withDynamicShape shape =
         )
 
 
+{-| Return the set amount of friction for the given shape. If not set this
+value is 0.3, the physics calculations default.
+-}
+frictionOf : Shape -> Number
+frictionOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .friction
+        |> Maybe.withDefault 0.3
+
+
+{-| Set the amount of friction for a shape. The default friction is 0.3.
+-}
+withFriction : Number -> Shape -> Shape
+withFriction amount (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | friction = Just amount
+                    }
+
+                Just phys ->
+                    { phys
+                        | friction = Just amount
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+{-| Return the set amount of bounciness for the given shape. If not set this
+value is 0, the physics calculations default.
+-}
+bouncinessOf : Shape -> Number
+bouncinessOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .bounciness
+        |> Maybe.withDefault 0
+
+
+{-| Set the amount of bounciness for a shape. The default bounciness is 0.
+-}
+withBounciness : Number -> Shape -> Shape
+withBounciness amount (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | bounciness = Just amount
+                    }
+
+                Just phys ->
+                    { phys
+                        | bounciness = Just amount
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
 {-| Set the weight (actually the mass) for a shape. For example:
 
     cylinder blue 50 100 |> withWeight (kilograms 10)
 
 -}
 withWeight : Mass -> Shape -> Shape
-withWeight =
-    -- TODO
-    always identity
+withWeight mass (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | mass = Just mass
+                    }
+
+                Just phys ->
+                    { phys
+                        | mass = Just mass
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+{-| Set the mass for a shape. For example:
+
+    cylinder blue 50 100 |> withMass (kilograms 10)
+
+-}
+withMass : Mass -> Shape -> Shape
+withMass mass (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | mass = Just mass
+                    }
+
+                Just phys ->
+                    { phys
+                        | mass = Just mass
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
 
 
 {-| Specify mass (weight) in kilograms.
@@ -4029,8 +4202,71 @@ inGrams =
 
 -}
 simulate : World Shape -> World Shape
-simulate =
-    World.simulate (Duration.seconds (1 / 60))
+simulate world =
+    world
+        |> World.constrain
+            (\b1 b2 ->
+                case ( Body.data b1, Body.data b2 ) of
+                    ( s1, (Shape _ _ _ _ _ _ _ _ _ (Just physics) _) as s2 ) ->
+                        physics.constraints
+                            |> List.filterMap (maybeApplyConstraint s1 s2)
+
+                    ( _, _ ) ->
+                        []
+            )
+        |> World.simulate (Duration.seconds (1 / 60))
+
+
+maybeApplyConstraint (Shape x1 y1 z1 rr1 rp1 ry1 _ _ n1 _ _) (Shape x2 y2 z2 rr2 rp2 ry2 _ _ n2 maybePhysics _) constraint =
+    if n1 == n2 then
+        Nothing
+
+    else
+        case constraint of
+            LockedPositionTo n ->
+                if n /= n1 then
+                    Nothing
+
+                else
+                    let
+                        attachmentPoint =
+                            Point3d.centimeters (x2 - x1) (y2 - y1) (z2 - z1)
+                    in
+                    Just (Physics.Constraint.pointToPoint attachmentPoint Point3d.origin)
+
+            FixedDistanceTo n ->
+                if n /= n1 then
+                    Nothing
+
+                else
+                    let
+                        length =
+                            Length.centimeters (sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2 + (z2 - z1) ^ 2))
+                    in
+                    Just (Physics.Constraint.distance length)
+
+            HingedTo n ->
+                if n /= n1 then
+                    Nothing
+
+                else
+                    let
+                        attachmentPoint =
+                            Point3d.centimeters (x2 - x1) (y2 - y1) (z2 - z1)
+
+                        axis1 =
+                            Axis3d.through attachmentPoint Direction3d.y
+                                |> Axis3d.rotateAround Axis3d.x (Angle.degrees rr1)
+                                |> Axis3d.rotateAround Axis3d.y (Angle.degrees rp1)
+                                |> Axis3d.rotateAround Axis3d.z (Angle.degrees ry1)
+
+                        axis2 =
+                            Axis3d.y
+                                |> Axis3d.rotateAround Axis3d.x (Angle.degrees rr2)
+                                |> Axis3d.rotateAround Axis3d.y (Angle.degrees rp2)
+                                |> Axis3d.rotateAround Axis3d.z (Angle.degrees ry2)
+                    in
+                    Just (Physics.Constraint.hinge axis1 axis2)
 
 
 {-| Simulate the world with a step of a specified duration.
@@ -4057,8 +4293,11 @@ shapesFromWorld world =
 shapeFromBody : Body Shape -> Shape
 shapeFromBody body =
     let
-        (Shape x y z rr rp ry s a n _ form) =
+        (Shape x y z rr rp ry s a n physics form) =
             Body.data body
+
+        constraints =
+            physics |> Maybe.map .constraints |> Maybe.withDefault []
 
         frame =
             Body.frame body
@@ -4071,44 +4310,142 @@ shapeFromBody body =
                 , zDirection = Frame3d.zDirection frame |> Direction3d.unwrap |> Direction3d.unsafe
                 }
     in
-    Shape x y z rr rp ry s a n (Just unsafeFrame) form
+    Shape x
+        y
+        z
+        rr
+        rp
+        ry
+        s
+        a
+        n
+        (Just
+            { frame = unsafeFrame
+            , mass = physics |> Maybe.andThen .mass
+            , constraints = constraints
+            , friction = physics |> Maybe.andThen .friction
+            , bounciness = physics |> Maybe.andThen .bounciness
+            }
+        )
+        form
 
 
 type Action
-    = Push Force (Direction3d Physics.Coordinates.WorldCoordinates)
-
-
-pushForward : Number -> Action
-pushForward f =
-    Push (Force.newtons f) Direction3d.x
-
-
-pushBackward : Number -> Action
-pushBackward f =
-    Push (Force.newtons f) Direction3d.negativeX
-
-
-pushLeft : Number -> Action
-pushLeft f =
-    Push (Force.newtons f) Direction3d.negativeY
-
-
-pushRight : Number -> Action
-pushRight f =
-    Push (Force.newtons f) Direction3d.y
-
-
-pushUp : Number -> Action
-pushUp f =
-    Push (Force.newtons f) Direction3d.z
-
-
-pushDown : Number -> Action
-pushDown f =
-    Push (Force.newtons f) Direction3d.negativeZ
+    = Push Force (Direction3d Physics.Coordinates.BodyCoordinates) (Point3d Meters Physics.Coordinates.BodyCoordinates)
+    | MoveTo (Point3d Meters Physics.Coordinates.WorldCoordinates)
+    | MoveBy (Vector3d Meters Physics.Coordinates.WorldCoordinates)
+    | MoveIn (Direction3d Physics.Coordinates.BodyCoordinates) Length
+    | RotateAround (Axis3d Meters Physics.Coordinates.WorldCoordinates) Angle
+    | Transform (List (Shape -> Shape))
 
 
 {-| -}
+moveTo : Number -> Number -> Number -> Action
+moveTo x y z =
+    MoveTo (Point3d.centimeters x y z)
+
+
+{-| Move a shape that was added to the physics world by a specified
+translation relative to the world.
+-}
+moveBy : Vector3d Meters Physics.Coordinates.WorldCoordinates -> Action
+moveBy translation =
+    MoveBy translation
+
+
+{-| Move a shape that was added to the physics world in a specified
+direction relative to the shape.
+-}
+moveIn : Direction3d Physics.Coordinates.BodyCoordinates -> Length -> Action
+moveIn direction distance =
+    MoveIn direction distance
+
+
+{-| Move a shape that was added to the physics world forward along its
+x-axis (so it is relative to the current orientation of the shape).
+-}
+moveForward : Number -> Action
+moveForward distance =
+    MoveIn Direction3d.x (Length.centimeters distance)
+
+
+{-| Rotate a shape that was added to the physics world along a specified
+axis relative to the shape.
+-}
+rotateAround : Axis3d Meters Physics.Coordinates.WorldCoordinates -> Angle -> Action
+rotateAround axis angle =
+    RotateAround axis angle
+
+
+{-| Push a shape that was added to the physics world along a specified
+axis relative to the shape, with an amount of force (Newtons), at a
+specific point on the shape (specified relative to the shape).
+-}
+push : { force : Force, direction : Direction3d Physics.Coordinates.BodyCoordinates, at : Point3d Meters Physics.Coordinates.BodyCoordinates } -> Action
+push { force, direction, at } =
+    Push force direction at
+
+
+{-| Push a shape that was added to the physics world forward (in the
+direction of the x-axis of the shape).
+-}
+pushForward : Number -> Action
+pushForward f =
+    Push (Force.newtons f) Direction3d.x Point3d.origin
+
+
+{-| Push a shape that was added to the physics world backward (in the
+opposite direction of the x-axis of the shape).
+-}
+pushBackward : Number -> Action
+pushBackward f =
+    Push (Force.newtons f) Direction3d.negativeX Point3d.origin
+
+
+{-| Push a shape that was added to the physics world the left (in the
+opposite direction of the y-axis of the shape).
+-}
+pushLeft : Number -> Action
+pushLeft f =
+    Push (Force.newtons f) Direction3d.negativeY Point3d.origin
+
+
+{-| Push a shape that was added to the physics world to the right (in the
+direction of the y-axis of the shape).
+-}
+pushRight : Number -> Action
+pushRight f =
+    Push (Force.newtons f) Direction3d.y Point3d.origin
+
+
+{-| Push a shape that was added to the physics world up (in the
+direction of the z-axis of the shape).
+-}
+pushUp : Number -> Action
+pushUp f =
+    Push (Force.newtons f) Direction3d.z Point3d.origin
+
+
+{-| Push a shape that was added to the physics world down (in the
+opposite direction of the z-axis of the shape).
+-}
+pushDown : Number -> Action
+pushDown f =
+    Push (Force.newtons f) Direction3d.negativeZ Point3d.origin
+
+
+{-| Transform a shape that was added to the physics world using the familiar
+transforms of the playground, such as `roll`, `pitch`, `yaw`, `move` and
+`scale`.
+-}
+transform : List (Shape -> Shape) -> Action
+transform transforms =
+    Transform transforms
+
+
+{-| Update the shapes added to the physics world using actions such as
+`pushForward`.
+-}
 updateWorldShapes : (Shape -> List Action) -> World Shape -> World Shape
 updateWorldShapes shapeToActions world =
     world
@@ -4119,7 +4456,9 @@ updateWorldShapes shapeToActions world =
             )
 
 
-{-| -}
+{-| Update the shape(s) with the specified name using actions such as
+`pushForward` and `transform`.
+-}
 updateShapeNamed : String -> List Action -> World Shape -> World Shape
 updateShapeNamed name actions world =
     world
@@ -4137,8 +4476,40 @@ updateShapeNamed name actions world =
 applyAction : Action -> Body Shape -> Body Shape
 applyAction action body =
     case action of
-        Push q d ->
-            Body.applyForce q d Point3d.origin body
+        Push q d p ->
+            body
+                |> Body.applyForce q
+                    (Direction3d.placeIn (Body.frame body) d)
+                    (Point3d.placeIn (Body.frame body) p)
+
+        MoveTo position ->
+            Body.moveTo position body
+
+        MoveBy translation ->
+            Body.translateBy translation body
+
+        MoveIn direction distance ->
+            body
+                |> Body.translateBy
+                    (direction
+                        |> Vector3d.withLength distance
+                        |> Vector3d.placeIn (Body.frame body)
+                    )
+
+        RotateAround axis angle ->
+            Body.rotateAround axis angle body
+
+        Transform tfs ->
+            let
+                (Shape x y z rr rp ry s _ _ _ _) =
+                    tfs
+                        |> List.foldl (\tf shape -> tf shape) (cube black 1)
+            in
+            body
+                |> Body.rotateAround (Axis3d.placeIn (Body.frame body) Axis3d.x) (Angle.degrees rr)
+                |> Body.rotateAround (Axis3d.placeIn (Body.frame body) Axis3d.y) (Angle.degrees rp)
+                |> Body.rotateAround (Axis3d.placeIn (Body.frame body) Axis3d.z) (Angle.degrees ry)
+                |> Body.translateBy (Vector3d.centimeters x y z)
 
 
 {-| Search the world for a shape with the specified name. Return `Nothing` if
@@ -4158,8 +4529,8 @@ shapeNamed name world =
 As if the shape would be the eyes! 8)
 -}
 viewFrom : Shape -> Camera
-viewFrom (Shape x y z rr rp ry _ _ _ maybeFrame _) =
-    case maybeFrame of
+viewFrom (Shape x y z rr rp ry _ _ _ physics _) =
+    case physics of
         Nothing ->
             { mode =
                 Framed
@@ -4174,7 +4545,59 @@ viewFrom (Shape x y z rr rp ry _ _ _ maybeFrame _) =
             , target = Nothing
             }
 
-        Just frame ->
+        Just { frame } ->
             { mode = Framed frame 1 (Angle.degrees 40)
             , target = Nothing
             }
+
+
+connect : Constraint -> Shape -> Shape
+connect constraint (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | constraints = [ constraint ]
+                    }
+
+                Just p ->
+                    { p
+                        | constraints = constraint :: p.constraints
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+defaultPhysics =
+    { frame = Frame3d.atOrigin
+    , constraints = []
+    , mass = Nothing
+    , friction = Nothing
+    , bounciness = Nothing
+    }
+
+
+{-| Connect a shape to another shape with the specified name via a constraint
+that keeps the position of the shape relative to the named shape fixed.
+-}
+lockPositionTo : String -> Shape -> Shape
+lockPositionTo shapeName =
+    connect (LockedPositionTo shapeName)
+
+
+{-| Connect a shape to another shape with the specified name via a constraint
+that keeps the distance of the shape to the named shape fixed.
+-}
+keepDistanceTo : String -> Shape -> Shape
+keepDistanceTo shapeName =
+    connect (FixedDistanceTo shapeName)
+
+
+{-| Connect a shape to another shape with the specified name via a hinge
+constraint that keeps the relative positions and allows rotation along the
+y-axes of the shapes (relative to the individual shapes).
+-}
+hingeTo : String -> Shape -> Shape
+hingeTo shapeName =
+    connect (HingedTo shapeName)
