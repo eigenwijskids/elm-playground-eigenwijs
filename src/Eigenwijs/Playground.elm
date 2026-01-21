@@ -21,7 +21,7 @@ module Eigenwijs.Playground exposing
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture, PictureMsg
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    , center, extent, distanceTo, collidesWith, containsPoint, toPolygon
+    , center, extent, distanceTo, collidesWith, containsPoint, toPolygon, minkowski
     , verticesOf, pointsOf, positionOf, scaleOf, rotationOf
     , pathFromCommands, forward, turn, turnTo
     )
@@ -137,7 +137,7 @@ module Eigenwijs.Playground exposing
 
 # Calculations
 
-@docs center, extent, distanceTo, collidesWith, containsPoint, toPolygon
+@docs center, extent, distanceTo, collidesWith, containsPoint, toPolygon, minkowski
 @docs verticesOf, pointsOf, positionOf, scaleOf, rotationOf
 
 
@@ -2119,7 +2119,30 @@ colorClamp number =
 -}
 collidesWith : Shape msg -> Shape msg -> Bool
 collidesWith shape2 shape1 =
-    (shape1 |> distanceTo shape2) <= 0
+    minkowski
+        (verticesOf (toPolygon transparent shape1))
+        (verticesOf (toPolygon transparent shape2))
+        |> List.map (\( x, y ) -> Point2d.unsafe { x = x, y = y })
+        |> Polygon2d.convexHull
+        |> Polygon2d.contains Point2d.origin
+
+
+{-| Calculate the Minkovski "difference" as used for computing intersection of
+convex shapes: see <https://en.wikipedia.org/wiki/Minkowski_addition>
+It is the Minkovski sum, where for each point in list `a` a list of new points
+is generated consisting where the `a` point's coordinates are subtracted from
+each point in `b`. The resulting list of points form a shape that will only
+contain the origin if the two convex shapes intersect.
+-}
+minkowski : List ( Number, Number ) -> List ( Number, Number ) -> List ( Number, Number )
+minkowski a b =
+    case a of
+        [] ->
+            []
+
+        ( x, y ) :: rest ->
+            List.map (\( v, w ) -> ( x - v, y - w )) b
+                ++ minkowski rest b
 
 
 {-| Calculates the distance between two shapes, taking their sizes into account:
@@ -2360,9 +2383,9 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                 point a =
                     Point2d.unitless (sx * r * cos a) (sy * r * sin a)
             in
-            List.range 0 (n - 1)
+            List.range 1 n
                 |> List.map
-                    (\i -> toFloat i / toFloat n - 0.25 |> turns |> point)
+                    (\i -> 0.25 + toFloat i / toFloat n |> turns |> point)
                 |> Polygon2d.singleLoop
                 |> transform
 
