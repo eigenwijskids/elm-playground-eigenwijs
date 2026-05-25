@@ -14,11 +14,9 @@ module Eigenwijs.Playground3d.WithObjFiles exposing
     , white, lightGrey, grey, darkGrey, lightCharcoal, charcoal, darkCharcoal, black
     , lightGray, gray, darkGray
     , Number
-    , entity
-    , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
-    , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
-    , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    , networkGame, networkGameWithCamera, Connection
+    , configuration, withCamera, withNetwork, withObjUrls
+    , configuredPicture, configuredAnimation, configuredGame
+    , Configuration, Connection
     , isometric, orbit, viewFrom, eyesAt, lookAt, pan, tilt, shift, zoom
     , withName, nameOf, whereIs, center, extent, extents
     , positionOf
@@ -34,6 +32,11 @@ module Eigenwijs.Playground3d.WithObjFiles exposing
     , pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown, push
     , transform
     , lockPositionTo, keepDistanceTo, hingeTo
+    , entity
+    , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
+    , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
+    , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+    -- , withAudio
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -132,25 +135,11 @@ The following primitives work in a (slightly) different way:
 @docs Number
 
 
-# Playground Scene3d embeds
+# Configurations
 
-@docs entity
-
-
-# Playground Picture embeds
-
-@docs pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
-
-
-# Playground Animation embeds
-
-@docs animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
-
-
-# Playground Game embeds
-
-@docs gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-@docs networkGame, networkGameWithCamera, Connection
+@docs configuration, withCamera, withNetwork, withObjUrls
+@docs configuredPicture, configuredAnimation, configuredGame
+@docs Configuration, Connection
 
 
 # Cameras (views)
@@ -193,6 +182,26 @@ The following primitives work in a (slightly) different way:
 ## Physics constraints
 
 @docs lockPositionTo, keepDistanceTo, hingeTo
+
+
+# Playground Scene3d embeds
+
+@docs entity
+
+
+# Playground Picture embeds
+
+@docs pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
+
+
+# Playground Animation embeds
+
+@docs animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
+
+
+# Playground Game embeds
+
+@docs gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
 
 -}
 
@@ -271,14 +280,55 @@ import WebGL.Texture
 -}
 picture : List Shape -> Program () Picture Msg
 picture shapes =
+    configuration
+        |> configuredPicture shapes
+
+
+type alias Configuration memory =
+    { camera : Maybe (memory -> Camera)
+    , network : Maybe Connection
+    , objUrls : List String
+    }
+
+
+configuration =
+    { camera = Nothing
+    , network = Nothing
+    , objUrls = []
+    }
+
+
+withCamera : (memory -> Camera) -> Configuration memory -> Configuration memory
+withCamera cam config =
+    { config
+        | camera = cam
+    }
+
+
+withNetwork : Connection -> Configuration memory -> Configuration memory
+withNetwork connection config =
+    { config
+        | network = connection
+    }
+
+
+withObjUrls : List String -> Configuration memory -> Configuration memory
+withObjUrls objUrls config =
+    { config
+        | objUrls = objUrls
+    }
+
+
+configuredPicture : List Shape -> Configuration memory -> Program () Picture Msg
+configuredPicture shapes config =
     let
         view screen =
             { title = "Playground"
-            , body = [ pictureView screen shapes ]
+            , body = [ pictureView screen shapes config ]
             }
     in
     Browser.document
-        { init = pictureInit shapes
+        { init = pictureInit shapes config
         , view = view
         , update = pictureUpdate shapes
         , subscriptions = pictureSubscriptions
@@ -310,7 +360,7 @@ type alias ObjWithMaterials =
 
 {-| Picture init function
 -}
-pictureInit : List Shape -> () -> ( Picture, Cmd Msg )
+pictureInit : List Shape -> Configuration memory -> () -> ( Picture, Cmd Msg )
 pictureInit shapes () =
     let
         model =
@@ -915,41 +965,19 @@ and [`zigzag`](#zigzag) to move and rotate our shapes.
 -}
 animation : (Time -> List Shape) -> Program () Animation Msg
 animation viewFrame =
-    let
-        view a =
-            { title = "Playground"
-            , body = [ animationView a viewFrame ]
-            }
-
-        update msg model =
-            ( animationUpdate msg model
-            , Cmd.none
-            )
-
-        subscriptions (Animation visibility _ _ _ _) =
-            case visibility of
-                E.Hidden ->
-                    E.onVisibilityChange VisibilityChanged
-
-                E.Visible ->
-                    animationSubscriptions
-    in
-    Browser.document
-        { init = animationInit viewFrame
-        , view = view
-        , update = update
-        , subscriptions = subscriptions
-        }
+    configuration
+        |> configuredAnimation viewFrame
 
 
-{-| Create an animation, providing a list of obj file urls to load.
+{-| Create an animation, with optionally a custom camera, network connection
+and/or obj file url list
 -}
-animationWithObjUrls : List String -> (Time -> List Shape) -> Program () Animation Msg
-animationWithObjUrls objUrls viewFrame =
+configuredAnimation : (Time -> List Shape) -> Configuration memory -> Program () Animation Msg
+configuredAnimation viewFrame config =
     let
         view a =
             { title = "Playground"
-            , body = [ animationView a viewFrame ]
+            , body = [ animationView a viewFrame config ]
             }
 
         update msg model =
@@ -966,7 +994,7 @@ animationWithObjUrls objUrls viewFrame =
                     animationSubscriptions
     in
     Browser.document
-        { init = animationInitWithObjUrls objUrls
+        { init = animationInit viewFrame config
         , view = view
         , update = update
         , subscriptions = subscriptions
@@ -981,31 +1009,19 @@ type Animation
 
 {-| Animation init
 -}
-animationInit : (Time -> List Shape) -> () -> ( Animation, Cmd Msg )
-animationInit viewFrame () =
+animationInit : (Time -> List Shape) -> Configuration memory -> () -> ( Animation, Cmd Msg )
+animationInit viewFrame config () =
     let
         objLoadCmds =
-            viewFrame beginOfTime
-                |> objFileUrlsFromShapes
-                |> List.map objRequest
-    in
-    ( Animation E.Visible Nothing initialObjLibrary (toScreen 600 600) (Time (Time.millisToPosix 0))
-    , Cmd.batch
-        [ Task.perform GotViewport Dom.getViewport
-        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
-        , Cmd.batch objLoadCmds
-        ]
-    )
+            case config.objUrls of
+                Nothing ->
+                    viewFrame beginOfTime
+                        |> objFileUrlsFromShapes
+                        |> List.map objRequest
 
-
-{-| Animation init providing a list of obj file urls to load.
--}
-animationInitWithObjUrls : List String -> () -> ( Animation, Cmd Msg )
-animationInitWithObjUrls objUrls () =
-    let
-        objLoadCmds =
-            objUrls
-                |> List.map objRequest
+                Just objUrls ->
+                    objUrls
+                        |> List.map objRequest
     in
     ( Animation E.Visible Nothing initialObjLibrary (toScreen 600 600) (Time (Time.millisToPosix 0))
     , Cmd.batch
@@ -1154,6 +1170,12 @@ Notice that in the `update` we use information from the keyboard to update the
 -}
 game : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
 game =
+    configuration
+        |> configuredGame
+
+
+configuredGame : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Progrma () (Game memory) Msg
+configuredGame =
     gameWithCamera (always isometric)
 
 
