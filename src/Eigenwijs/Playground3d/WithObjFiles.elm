@@ -1,0 +1,4900 @@
+module Eigenwijs.Playground3d.WithObjFiles exposing
+    ( picture, animation, game
+    , Shape, circle, square, rectangle, triangle, polygon, snake
+    , sphere, cylinder, cone, cube, block, prism, obj, objFile
+    , words
+    , move, moveX, moveY, moveZ, moveAlong, moveAlongLoop
+    , scale, rotate, roll, pitch, yaw, fade
+    , group, extrude, pullUp, prerendered
+    , Time, spin, wave, zigzag, beginOfTime, secondsBetween
+    , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
+    , rgb, rgb255, red, orange, yellow, green, blue, purple, brown
+    , lightRed, lightOrange, lightYellow, lightGreen, lightBlue, lightPurple, lightBrown
+    , darkRed, darkOrange, darkYellow, darkGreen, darkBlue, darkPurple, darkBrown
+    , white, lightGrey, grey, darkGrey, lightCharcoal, charcoal, darkCharcoal, black
+    , lightGray, gray, darkGray
+    , Number
+    , entity
+    , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
+    , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
+    , gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+    , networkGame, networkGameWithCamera, Connection
+    , isometric, orbit, viewFrom, eyesAt, lookAt, pan, tilt, shift, zoom
+    , withName, nameOf, whereIs, center, extent, extents
+    , positionOf
+    , emptyWorld, withGravity, withShapes, withDynamicShapes
+    , simulate, simulateFor, shapesFromWorld, shapeNamed
+    , withWeight, withMass, kilograms, grams
+    , weightOf, massOf, inKilograms, inGrams
+    , withFriction, frictionOf
+    , withBounciness, bouncinessOf
+    , updateWorldShapes, updateShapeNamed
+    , moveTo, moveBy, moveIn, moveForward
+    , rotateAround
+    , pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown, push
+    , transform
+    , lockPositionTo, keepDistanceTo, hingeTo
+    )
+
+{-| **Beware that this is a project under heavy construction** - We are trying to
+incrementally work towards a library enabling folks familiar with the 2D
+Playground, to add 3D elements to a 3D scene, and in this way enabling them to
+contribute to a collaboratively developed game.
+
+
+# Compatibility with the original Playground library
+
+This library exports the same functions and types except for (for the time being):
+
+  - oval, pentagon, hexagon, octagon (just some grunt work)
+  - image
+  - Color (Color is imported from the package avh4/elm-color)
+
+The following primitives work in a (slightly) different way:
+
+  - words (are rendered using a pixel font - actually Mogee from the kuzminadya/mogeefont package)
+  - move (takes an additional z-coordinate)
+  - Shape (also adds a z-coordinate, and has roll, pitch, yaw instead of only a single angle)
+
+
+# Playgrounds
+
+@docs picture, animation, game
+
+
+# Shapes
+
+@docs Shape, circle, square, rectangle, triangle, polygon, snake
+
+
+# 3D Shapes
+
+@docs sphere, cylinder, cone, cube, block, prism, obj, objFile
+
+
+# Words
+
+@docs words
+
+
+# Move Shapes
+
+@docs move, moveX, moveY, moveZ, moveAlong, moveAlongLoop
+
+
+# Customize Shapes
+
+@docs scale, rotate, roll, pitch, yaw, fade
+
+
+# Groups, extrusion, optimization
+
+@docs group, extrude, pullUp, prerendered
+
+
+# Time
+
+@docs Time, spin, wave, zigzag, beginOfTime, secondsBetween
+
+
+# Computer
+
+@docs Computer, Mouse, Screen, Keyboard, toX, toY, toXY
+
+
+# Colors
+
+@docs rgb, rgb255, red, orange, yellow, green, blue, purple, brown
+
+
+### Light Colors
+
+@docs lightRed, lightOrange, lightYellow, lightGreen, lightBlue, lightPurple, lightBrown
+
+
+### Dark Colors
+
+@docs darkRed, darkOrange, darkYellow, darkGreen, darkBlue, darkPurple, darkBrown
+
+
+### Shades of Grey
+
+@docs white, lightGrey, grey, darkGrey, lightCharcoal, charcoal, darkCharcoal, black
+
+
+### Alternate Spellings of Gray
+
+@docs lightGray, gray, darkGray
+
+
+### Numbers
+
+@docs Number
+
+
+# Playground Scene3d embeds
+
+@docs entity
+
+
+# Playground Picture embeds
+
+@docs pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
+
+
+# Playground Animation embeds
+
+@docs animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
+
+
+# Playground Game embeds
+
+@docs gameWithCamera, gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
+@docs networkGame, networkGameWithCamera, Connection
+
+
+# Cameras (views)
+
+@docs isometric, orbit, viewFrom, eyesAt, lookAt, pan, tilt, shift, zoom
+
+
+# Naming and calculations
+
+@docs withName, nameOf, whereIs, center, extent, extents
+@docs positionOf
+
+
+# Physics
+
+
+## Physics world
+
+@docs emptyWorld, withGravity, withShapes, withDynamicShapes
+@docs simulate, simulateFor, shapesFromWorld, shapeNamed
+
+
+## Physics shape properties
+
+@docs withWeight, withMass, kilograms, grams
+@docs weightOf, massOf, inKilograms, inGrams
+@docs withFriction, frictionOf
+@docs withBounciness, bouncinessOf
+
+
+## Physics updates and actions
+
+@docs updateWorldShapes, updateShapeNamed
+@docs moveTo, moveBy, moveIn, moveForward
+@docs rotateAround
+@docs pushForward, pushBackward, pushLeft, pushRight, pushUp, pushDown, push
+@docs transform
+
+
+## Physics constraints
+
+@docs lockPositionTo, keepDistanceTo, hingeTo
+
+-}
+
+import Acceleration
+import Angle exposing (Angle)
+import Array
+import Axis3d exposing (Axis3d)
+import Block3d
+import BoundingBox3d exposing (BoundingBox3d)
+import Browser
+import Browser.Dom as Dom
+import Browser.Events as E
+import Camera3d exposing (Camera3d)
+import Color exposing (..)
+import Cone3d
+import Cylinder3d
+import DelaunayTriangulation2d
+import Dict exposing (Dict)
+import Direction3d exposing (Direction3d)
+import Duration exposing (Duration)
+import Eigenwijs.Playground as Playground2d
+import Eigenwijs.Playground3d.Shape as Shape
+import Force exposing (Force)
+import Frame3d exposing (Frame3d)
+import Html
+import Html.Attributes as H
+import Html.Events.Extra.Touch as Touch
+import Html.Lazy exposing (lazy)
+import Http
+import Json.Decode as D
+import Json.Encode as E
+import Length exposing (Length, Meters, centimeters, meters)
+import Mass exposing (Mass)
+import MogeeFont
+import Obj.Decode exposing (Decoder, ObjCoordinates)
+import Physics.Body as Body exposing (Body)
+import Physics.Constraint
+import Physics.Coordinates
+import Physics.Material
+import Physics.Shape as Physics
+import Physics.World as World exposing (World)
+import Pixels exposing (Pixels, pixels)
+import Point2d exposing (Point2d)
+import Point3d exposing (Point3d)
+import Polyline3d
+import Quantity exposing (zero)
+import Scene3d exposing (Entity, group)
+import Scene3d.Material as Material exposing (Material, Texture)
+import Scene3d.Mesh exposing (Mesh, Textured, Uniform)
+import Set
+import SketchPlane3d
+import Sphere3d
+import Task
+import Time
+import TriangularMesh exposing (TriangularMesh)
+import Vector3d exposing (Vector3d)
+import Viewpoint3d exposing (Viewpoint3d)
+import WebGL.Texture
+
+
+
+-- PICTURE
+
+
+{-| Make a picture! Here is a picture of a triangle with an eyeball:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle green 150
+            , circle white 40
+            , circle black 10
+            ]
+
+-}
+picture : List Shape -> Program () Picture Msg
+picture shapes =
+    let
+        view screen =
+            { title = "Playground"
+            , body = [ pictureView screen shapes ]
+            }
+    in
+    Browser.document
+        { init = pictureInit shapes
+        , view = view
+        , update = pictureUpdate shapes
+        , subscriptions = pictureSubscriptions
+        }
+
+
+{-| Picture model
+-}
+type alias Picture =
+    { screen : Screen
+    , font : Maybe Font
+    , objFiles : ObjLibrary
+    }
+
+
+type alias ObjLibrary =
+    Dict String ObjState
+
+
+type ObjState
+    = ObjNotLoaded
+    | ObjDecodeError
+    | ObjLoaded ObjWithMaterials
+
+
+type alias ObjWithMaterials =
+    ( List MeshWithMaterial, BoundingBox3d Meters ObjCoordinates )
+
+
+{-| Picture init function
+-}
+pictureInit : List Shape -> () -> ( Picture, Cmd Msg )
+pictureInit shapes () =
+    let
+        model =
+            Picture (toScreen 600 600) Nothing initialObjLibrary
+
+        objLoadCmds =
+            shapes
+                |> objFileUrlsFromShapes
+                |> List.map objRequest
+    in
+    ( model
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        , Cmd.batch objLoadCmds
+        ]
+    )
+
+
+{-| Picture view function
+-}
+pictureView : Picture -> List Shape -> Html.Html Msg
+pictureView =
+    render isometric
+
+
+{-| Picture update function
+-}
+pictureUpdate : List Shape -> Msg -> Picture -> ( Picture, Cmd Msg )
+pictureUpdate shapes msg p =
+    case msg of
+        GotViewport { viewport } ->
+            ( { p | screen = toScreen viewport.width viewport.height }
+            , Cmd.none
+            )
+
+        GotFont (Ok texture) ->
+            ( { p | font = Just texture }
+            , Cmd.none
+            )
+
+        Resized w h ->
+            ( { p | screen = toScreen (toFloat w) (toFloat h) }
+            , Cmd.none
+            )
+
+        GotObj url (Ok objWithMaterials) ->
+            ( { p | objFiles = p.objFiles |> Dict.insert url (ObjLoaded objWithMaterials) }, Cmd.none )
+
+        GotObj url _ ->
+            ( { p | objFiles = p.objFiles |> Dict.insert url ObjDecodeError }, Cmd.none )
+
+        _ ->
+            ( p, Cmd.none )
+
+
+objFileUrlsFromShapes shapes =
+    case shapes of
+        (Shape _ _ _ _ _ _ _ _ _ _ (ObjFile _ url)) :: rest ->
+            url :: objFileUrlsFromShapes rest
+
+        (Shape _ _ _ _ _ _ _ _ _ _ (Group groupedShapes)) :: rest ->
+            objFileUrlsFromShapes groupedShapes ++ objFileUrlsFromShapes rest
+
+        _ ->
+            []
+
+
+objRequest url =
+    Http.get
+        { url = url
+        , expect = Obj.Decode.expectObj (GotObj url) Length.meters meshWithBoundingBoxDecoder
+        }
+
+
+type alias MeshWithMaterial =
+    ( String, ObjMesh )
+
+
+type ObjMesh
+    = TexturedMesh (Textured ObjCoordinates)
+    | UniformMesh (Uniform ObjCoordinates)
+
+
+{-| Because we don’t know the exect format of a mesh, we try decoding different
+primitives: from the most specific to the most simple one.
+-}
+meshWithBoundingBoxDecoder : Decoder ( List MeshWithMaterial, BoundingBox3d Meters ObjCoordinates )
+meshWithBoundingBoxDecoder =
+    Obj.Decode.oneOf
+        [ withBoundingBox .position (Scene3d.Mesh.texturedFaces >> TexturedMesh) Obj.Decode.texturedFaces
+        , withBoundingBox .position (Scene3d.Mesh.indexedFaces >> UniformMesh) Obj.Decode.faces
+        , withBoundingBox .position (Scene3d.Mesh.texturedFacets >> TexturedMesh) Obj.Decode.texturedTriangles
+        , withBoundingBox identity (Scene3d.Mesh.indexedFacets >> UniformMesh) Obj.Decode.triangles
+        ]
+
+
+withBoundingBox :
+    (a -> Point3d Meters ObjCoordinates) -- a function that knows how to extract position of a vertex
+    -> (TriangularMesh a -> ObjMesh) -- a function that knows how to create a ObjMesh
+    -> Decoder (TriangularMesh a) -- a primitive decoder
+    -> Decoder ( List MeshWithMaterial, BoundingBox3d Meters ObjCoordinates )
+withBoundingBox getPosition createMesh meshDecoder =
+    meshDecoder
+        |> withMaterials
+        |> Obj.Decode.map
+            (List.foldl
+                (\( materialName, triangularMesh ) ( meshes, boundingBox ) ->
+                    ( ( materialName, createMesh triangularMesh ) :: meshes
+                    , BoundingBox3d.union boundingBox
+                        (case List.map getPosition (Array.toList (TriangularMesh.vertices triangularMesh)) of
+                            first :: rest ->
+                                BoundingBox3d.hull first rest
+
+                            [] ->
+                                BoundingBox3d.singleton Point3d.origin
+                        )
+                    )
+                )
+                ( [], BoundingBox3d.singleton Point3d.origin )
+            )
+
+
+trianglesForMaterials : Decoder a -> List String -> Decoder (List ( String, a ))
+trianglesForMaterials trianglesDecoder names =
+    names
+        |> List.map
+            (\materialName ->
+                Obj.Decode.material materialName trianglesDecoder
+                    |> Obj.Decode.map (\m -> ( materialName, m ))
+            )
+        |> Obj.Decode.combine
+
+
+withMaterials : Decoder a -> Decoder (List ( String, a ))
+withMaterials trianglesDecoder =
+    Obj.Decode.materialNames
+        |> Obj.Decode.andThen (trianglesForMaterials trianglesDecoder)
+
+
+{-| Picture subscriptions
+-}
+pictureSubscriptions : Picture -> Sub Msg
+pictureSubscriptions _ =
+    E.onResize Resized
+
+
+
+-- COMPUTER
+
+
+{-| When writing a [`game`](#game), you can look up all sorts of information
+about your computer:
+
+  - [`Mouse`](#Mouse) - Where is the mouse right now?
+  - [`Keyboard`](#Keyboard) - Are the arrow keys down?
+  - [`Screen`](#Screen) - How wide is the screen?
+  - [`Time`](#Time) - What time is it right now?
+
+So you can use expressions like `computer.mouse.x` and `computer.keyboard.enter`
+in games where you want some mouse or keyboard interaction.
+
+-}
+type alias Computer =
+    { inbox : List Message
+    , secondsBeforeSend : Number
+    , touch :
+        { list : List Touch
+        , current : Maybe Touch
+        , change : Maybe Touch
+        , previous : Maybe Touch
+        }
+    , mouse : Mouse
+    , keyboard : Keyboard
+    , screen : Screen
+    , time : Time
+    }
+
+
+
+-- MESSAGING
+
+
+type alias Message =
+    { sender : String
+    , subject : String
+    , predicate : String
+    , object : String
+    }
+
+
+
+-- TOUCH
+
+
+{-| Figure out what is going on with touch (touch pad, touch screen).
+-}
+type alias Touch =
+    { x : Number
+    , y : Number
+    }
+
+
+
+-- MOUSE
+
+
+{-| Figure out what is going on with the mouse.
+
+You could draw a circle around the mouse with a program like this:
+
+    import Playground exposing (..)
+
+    main =
+        game view update 0
+
+    view computer memory =
+        [ circle yellow 40
+            |> moveX computer.mouse.x
+            |> moveY computer.mouse.y
+        ]
+
+    update computer memory =
+        memory
+
+You could also use `computer.mouse.down` to change the color of the circle
+while the mouse button is down.
+
+-}
+type alias Mouse =
+    { x : Number
+    , y : Number
+    , down : Bool
+    , click : Bool
+    }
+
+
+{-| A number like `1` or `3.14` or `-120`.
+-}
+type alias Number =
+    Float
+
+
+
+-- KEYBOARD
+
+
+{-| Figure out what is going on with the keyboard.
+
+If someone is pressing the UP and RIGHT arrows, you will see a value like this:
+
+    { up = True
+    , down = False
+    , left = False
+    , right = True
+    , space = False
+    , enter = False
+    , shift = False
+    , backspace = False
+    , keys = Set.fromList [ "ArrowUp", "ArrowRight" ]
+    }
+
+So if you want to move a character based on arrows, you could write an update
+like this:
+
+    update computer y =
+        if computer.keyboard.up then
+            y + 1
+
+        else
+            y
+
+Check out [`toX`](#toX) and [`toY`](#toY) which make this even easier!
+
+**Note:** The `keys` set will be filled with the name of all keys which are
+down right now. So you will see things like `"a"`, `"b"`, `"c"`, `"1"`, `"2"`,
+`"Space"`, and `"Control"` in there. Check out [this list][list] to see the
+names used for all the different special keys! From there, you can use
+[`Set.member`][member] to check for whichever key you want. E.g.
+`Set.member "Control" computer.keyboard.keys`.
+
+[list]: https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values
+[member]: /packages/elm/core/latest/Set#member
+
+-}
+type alias Keyboard =
+    { up : Bool
+    , down : Bool
+    , left : Bool
+    , right : Bool
+    , space : Bool
+    , enter : Bool
+    , shift : Bool
+    , backspace : Bool
+    , keys : Set.Set String
+    }
+
+
+{-| Turn the LEFT and RIGHT arrows into a number.
+
+    toX { left = False, right = False, ... } == 0
+    toX { left = True , right = False, ... } == -1
+    toX { left = False, right = True , ... } == 1
+    toX { left = True , right = True , ... } == 0
+
+So to make a square move left and right based on the arrow keys, we could say:
+
+    import Playground exposing (..)
+
+    main =
+        game view update 0
+
+    view computer x =
+        [ square green 40
+            |> moveX x
+        ]
+
+    update computer x =
+        x + toX computer.keyboard
+
+-}
+toX : Keyboard -> Number
+toX keyboard =
+    (if keyboard.right then
+        1
+
+     else
+        0
+    )
+        - (if keyboard.left then
+            1
+
+           else
+            0
+          )
+
+
+{-| Turn the UP and DOWN arrows into a number.
+
+    toY { up = False, down = False, ... } == 0
+    toY { up = True , down = False, ... } == 1
+    toY { up = False, down = True , ... } == -1
+    toY { up = True , down = True , ... } == 0
+
+This can be used to move characters around in games just like [`toX`](#toX):
+
+    import Playground exposing (..)
+
+    main =
+        game view update ( 0, 0 )
+
+    view computer ( x, y ) =
+        [ square blue 40
+            |> move x y
+        ]
+
+    update computer ( x, y ) =
+        ( x + toX computer.keyboard
+        , y + toY computer.keyboard
+        )
+
+-}
+toY : Keyboard -> Number
+toY keyboard =
+    (if keyboard.up then
+        1
+
+     else
+        0
+    )
+        - (if keyboard.down then
+            1
+
+           else
+            0
+          )
+
+
+{-| If you just use `toX` and `toY`, you will move diagonal too fast. You will go
+right at 1 pixel per update, but you will go up/right at 1.41421 pixels per
+update.
+
+So `toXY` turns the arrow keys into an `(x,y)` pair such that the distance is
+normalized:
+
+    toXY { up = True , down = False, left = False, right = False, ... } == (1, 0)
+    toXY { up = True , down = False, left = False, right = True , ... } == (0.707, 0.707)
+    toXY { up = False, down = False, left = False, right = True , ... } == (0, 1)
+
+Now when you go up/right, you are still going 1 pixel per update.
+
+    import Playground exposing (..)
+
+    main =
+        game view update ( 0, 0 )
+
+    view computer ( x, y ) =
+        [ square green 40
+            |> move x y
+        ]
+
+    update computer ( x, y ) =
+        let
+            ( dx, dy ) =
+                toXY computer.keyboard
+        in
+        ( x + dx, y + dy )
+
+-}
+toXY : Keyboard -> ( Number, Number )
+toXY keyboard =
+    let
+        x =
+            toX keyboard
+
+        y =
+            toY keyboard
+    in
+    if x /= 0 && y /= 0 then
+        ( x / squareRootOfTwo, y / squareRootOfTwo )
+
+    else
+        ( x, y )
+
+
+squareRootOfTwo : Number
+squareRootOfTwo =
+    sqrt 2
+
+
+
+-- SCREEN
+
+
+{-| Get the dimensions of the screen. If the screen is 800 by 600, you will see
+a value like this:
+
+    { width = 800
+    , height = 600
+    , top = 300
+    , left = -400
+    , right = 400
+    , bottom = -300
+    }
+
+This can be nice when used with [`moveY`](#moveY) if you want to put something
+on the bottom of the screen, no matter the dimensions.
+
+-}
+type alias Screen =
+    { width : Number
+    , height : Number
+    , top : Number
+    , left : Number
+    , right : Number
+    , bottom : Number
+    }
+
+
+
+-- TIME
+
+
+{-| The current time.
+
+Helpful when making an [`animation`](#animation) with functions like
+[`spin`](#spin), [`wave`](#wave), and [`zigzag`](#zigzag).
+
+-}
+type Time
+    = Time Time.Posix
+
+
+timeFromMillis : Int -> Time
+timeFromMillis timestamp =
+    timestamp
+        |> Time.millisToPosix
+        |> Time
+
+
+{-| Return the number of seconds between two instances of Time.
+-}
+secondsBetween : Time -> Time -> Number
+secondsBetween (Time time1) (Time time2) =
+    (Time.posixToMillis time1 - Time.posixToMillis time2)
+        |> abs
+        |> toFloat
+        |> (/) 1000
+
+
+{-| Create an angle that cycles from 0 to 360 degrees over time.
+
+Here is an [`animation`](#animation) with a spinning triangle:
+
+    import Playground exposing (..)
+
+    main =
+        animation view
+
+    view time =
+        [ triangle orange 50
+            |> rotate (spin 8 time)
+        ]
+
+It will do a full rotation once every eight seconds. Try changing the `8` to
+a `2` to make it do a full rotation every two seconds. It moves a lot faster!
+
+-}
+spin : Number -> Time -> Number
+spin period time =
+    360 * toFrac period time
+
+
+{-| Smoothly wave between two numbers.
+
+Here is an [`animation`](#animation) with a circle that resizes:
+
+    import Playground exposing (..)
+
+    main =
+        animation view
+
+    view time =
+        [ circle lightBlue (wave 50 90 7 time)
+        ]
+
+The radius of the circle will cycles between 50 and 90 every seven seconds.
+It kind of looks like it is breathing.
+
+-}
+wave : Number -> Number -> Number -> Time -> Number
+wave lo hi period time =
+    lo + (hi - lo) * (1 + cos (turns (toFrac period time))) / 2
+
+
+{-| Zig zag between two numbers.
+
+Here is an [`animation`](#animation) with a rectangle that tips back and forth:
+
+    import Playground exposing (..)
+
+    main =
+        animation view
+
+    view time =
+        [ rectangle lightGreen 20 100
+            |> rotate (zigzag -20 20 4 time)
+        ]
+
+It gets rotated by an angle. The angle cycles from -20 degrees to 20 degrees
+every four seconds.
+
+-}
+zigzag : Number -> Number -> Number -> Time -> Number
+zigzag lo hi period time =
+    lo + (hi - lo) * abs (2 * toFrac period time - 1)
+
+
+toFrac : Float -> Time -> Float
+toFrac period (Time posix) =
+    let
+        ms =
+            Time.posixToMillis posix
+
+        p =
+            period * 1000
+    in
+    toFloat (modBy (round p) ms) / p
+
+
+{-| BeginOfTime
+-}
+beginOfTime : Time
+beginOfTime =
+    Time (Time.millisToPosix 0)
+
+
+
+-- ANIMATION
+
+
+{-| Create an animation!
+
+Once you get comfortable using [`picture`](#picture) to layout shapes, you can
+try out an `animation`. Here is square that zigzags back and forth:
+
+    import Playground exposing (..)
+
+    main =
+        animation view
+
+    view time =
+        [ square blue 40
+            |> moveX (zigzag -100 100 2 time)
+        ]
+
+We need to define a `view` to make our animation work.
+
+Within `view` we can use functions like [`spin`](#spin), [`wave`](#wave),
+and [`zigzag`](#zigzag) to move and rotate our shapes.
+
+-}
+animation : (Time -> List Shape) -> Program () Animation Msg
+animation viewFrame =
+    let
+        view a =
+            { title = "Playground"
+            , body = [ animationView a viewFrame ]
+            }
+
+        update msg model =
+            ( animationUpdate msg model
+            , Cmd.none
+            )
+
+        subscriptions (Animation visibility _ _ _ _) =
+            case visibility of
+                E.Hidden ->
+                    E.onVisibilityChange VisibilityChanged
+
+                E.Visible ->
+                    animationSubscriptions
+    in
+    Browser.document
+        { init = animationInit viewFrame
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+{-| Create an animation, providing a list of obj file urls to load.
+-}
+animationWithObjUrls : List String -> (Time -> List Shape) -> Program () Animation Msg
+animationWithObjUrls objUrls viewFrame =
+    let
+        view a =
+            { title = "Playground"
+            , body = [ animationView a viewFrame ]
+            }
+
+        update msg model =
+            ( animationUpdate msg model
+            , Cmd.none
+            )
+
+        subscriptions (Animation visibility _ _ _ _) =
+            case visibility of
+                E.Hidden ->
+                    E.onVisibilityChange VisibilityChanged
+
+                E.Visible ->
+                    animationSubscriptions
+    in
+    Browser.document
+        { init = animationInitWithObjUrls objUrls
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+{-| The type for animations.
+-}
+type Animation
+    = Animation E.Visibility (Maybe Font) ObjLibrary Screen Time
+
+
+{-| Animation init
+-}
+animationInit : (Time -> List Shape) -> () -> ( Animation, Cmd Msg )
+animationInit viewFrame () =
+    let
+        objLoadCmds =
+            viewFrame beginOfTime
+                |> objFileUrlsFromShapes
+                |> List.map objRequest
+    in
+    ( Animation E.Visible Nothing initialObjLibrary (toScreen 600 600) (Time (Time.millisToPosix 0))
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        , Cmd.batch objLoadCmds
+        ]
+    )
+
+
+{-| Animation init providing a list of obj file urls to load.
+-}
+animationInitWithObjUrls : List String -> () -> ( Animation, Cmd Msg )
+animationInitWithObjUrls objUrls () =
+    let
+        objLoadCmds =
+            objUrls
+                |> List.map objRequest
+    in
+    ( Animation E.Visible Nothing initialObjLibrary (toScreen 600 600) (Time (Time.millisToPosix 0))
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        , Cmd.batch objLoadCmds
+        ]
+    )
+
+
+{-| Animation view
+-}
+animationView : Animation -> (Time -> List Shape) -> Html.Html Msg
+animationView (Animation _ font objFiles screen time) viewFrame =
+    render
+        isometric
+        { screen = screen, font = font, objFiles = objFiles }
+        (viewFrame time)
+
+
+{-| Animation subscriptions
+-}
+animationSubscriptions : Sub Msg
+animationSubscriptions =
+    Sub.batch
+        [ E.onResize Resized
+        , E.onAnimationFrame Tick
+        , E.onVisibilityChange VisibilityChanged
+        ]
+
+
+{-| Animation update function
+-}
+animationUpdate : Msg -> Animation -> Animation
+animationUpdate msg ((Animation v f o s t) as state) =
+    case msg of
+        Tick posix ->
+            Animation v f o s (Time posix)
+
+        VisibilityChanged vis ->
+            Animation vis f o s t
+
+        GotViewport { viewport } ->
+            Animation v f o (toScreen viewport.width viewport.height) t
+
+        GotFont (Ok texture) ->
+            Animation v (Just texture) o s t
+
+        GotFont (Err _) ->
+            Animation v f o s t
+
+        Resized w h ->
+            Animation v f o (toScreen (toFloat w) (toFloat h)) t
+
+        KeyChanged _ _ ->
+            state
+
+        MessagesReceived _ ->
+            state
+
+        MouseMove _ _ ->
+            state
+
+        MouseClick ->
+            state
+
+        MouseButton _ ->
+            state
+
+        TouchMove _ ->
+            state
+
+        GotObj url (Ok objWithMaterials) ->
+            let
+                newLibrary =
+                    o |> Dict.insert url (ObjLoaded objWithMaterials)
+            in
+            Animation v f newLibrary s t
+
+        GotObj url _ ->
+            let
+                newLibrary =
+                    o |> Dict.insert url ObjDecodeError
+            in
+            Animation v f newLibrary s t
+
+
+
+-- GAME
+
+
+{-| Create a game!
+
+Once you get comfortable with [`animation`](#animation), you can try making a
+game with the keyboard and mouse. Here is an example of a green square that
+just moves to the right:
+
+    import Playground exposing (..)
+
+    main =
+        game view update 0
+
+    view computer offset =
+        [ square green 40
+            |> moveRight offset
+        ]
+
+    update computer offset =
+        offset + 0.03
+
+This shows the three important parts of a game:
+
+1.  `memory` - makes it possible to store information. So with our green square,
+    we save the `offset` in memory. It starts out at `0`.
+2.  `view` - lets us say which shapes to put on screen. So here we move our
+    square right by the `offset` saved in memory.
+3.  `update` - lets us update the memory. We are incrementing the `offset` by
+    a tiny amount on each frame.
+
+The `update` function is called about 60 times per second, so our little
+changes to `offset` start to add up pretty quickly!
+
+This game is not very fun though! Making a `game` also gives you access to the
+[`Computer`](#Computer), so you can use information about the [`Mouse`](#Mouse)
+and [`Keyboard`](#Keyboard) to make it interactive! So here is a red square that
+moves based on the arrow keys:
+
+    import Playground exposing (..)
+
+    main =
+        game view update ( 0, 0 )
+
+    view computer ( x, y ) =
+        [ square red 40
+            |> move x y
+        ]
+
+    update computer ( x, y ) =
+        ( x + toX computer.keyboard
+        , y + toY computer.keyboard
+        )
+
+Notice that in the `update` we use information from the keyboard to update the
+`x` and `y` values. These building blocks let you make pretty fancy games!
+
+-}
+game : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+game =
+    gameWithCamera (always isometric)
+
+
+{-| Create a game using a specific camera for viewing the scene!
+-}
+gameWithCamera : (memory -> Camera) -> (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+gameWithCamera cam viewMemory updateMemory initialMemory =
+    let
+        view model =
+            { title = "Playground"
+            , body = [ gameView cam viewMemory model ]
+
+            --, body = [ lazy (gameView cam viewMemory) model ] -- might not be sensible because of time and its use
+            }
+
+        update msg model =
+            ( gameUpdate updateMemory msg model
+            , Cmd.none
+            )
+    in
+    Browser.document
+        { init = gameInit initialMemory
+        , view = view
+        , update = update
+        , subscriptions = gameSubscriptions
+        }
+
+
+type alias WithMessages memory =
+    { memory
+        | outbox : List ( String, String, String )
+    }
+
+
+{-| A network Connection with server url, sender name, and the send interval
+in seconds.
+-}
+type alias Connection =
+    { server : String
+    , name : String
+    , sendIntervalInSeconds : Number
+    }
+
+
+{-| Create a network game; a game that has a messages `inbox` field in Computer
+and a messages `outbox` as a field in its memory. The game takes a Connection
+parameter. Messages sent are tagged with your sender name, configured as
+`name` in the Connection.
+-}
+networkGame :
+    Connection
+    -> (Computer -> WithMessages memory -> List Shape)
+    -> (Computer -> WithMessages memory -> WithMessages memory)
+    -> WithMessages memory
+    -> Program () (Game (WithMessages memory)) Msg
+networkGame connection =
+    networkGameWithCamera (always isometric) connection
+
+
+{-| Create a network game using a specific camera for viewing the scene!
+-}
+networkGameWithCamera : (WithMessages memory -> Camera) -> Connection -> (Computer -> WithMessages memory -> List Shape) -> (Computer -> WithMessages memory -> WithMessages memory) -> WithMessages memory -> Program () (Game (WithMessages memory)) Msg
+networkGameWithCamera cam connection viewMemory updateMemory initialMemory =
+    let
+        view model =
+            { title = "Playground"
+            , body = [ gameView cam viewMemory model ]
+
+            --, body = [ lazy (gameView cam viewMemory) model ] -- might not be sensible because of time and its use
+            }
+
+        update msg model =
+            networkGameUpdate updateMemory msg model
+                |> withCommandsFromMessages connection
+    in
+    Browser.document
+        { init = networkGameInit initialMemory
+        , view = view
+        , update = update
+        , subscriptions = gameSubscriptions
+        }
+
+
+withCommandsFromMessages : Connection -> Game (WithMessages memory) -> ( Game (WithMessages memory), Cmd Msg )
+withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibility font objLibrary memory computer) =
+    if computer.secondsBeforeSend <= 0 then
+        ( Game visibility
+            font
+            objLibrary
+            memory
+            { computer
+                | secondsBeforeSend =
+                    if sendIntervalInSeconds < 0.1 then
+                        0.1
+
+                    else
+                        sendIntervalInSeconds
+            }
+        , postMessages server name memory.outbox
+        )
+
+    else
+        ( Game visibility font objLibrary memory { computer | secondsBeforeSend = computer.secondsBeforeSend - 1 / 60 }
+        , Cmd.none
+        )
+
+
+postMessages : String -> String -> List ( String, String, String ) -> Cmd Msg
+postMessages url sender messages =
+    case String.trim url of
+        "" ->
+            Cmd.none
+
+        trimmedUrl ->
+            Http.post
+                { url = trimmedUrl
+                , expect = Http.expectJson MessagesReceived (D.list messageDecoder)
+                , body =
+                    messages
+                        |> E.list (messageEncoded sender)
+                        |> Http.jsonBody
+                }
+
+
+messageEncoded : String -> ( String, String, String ) -> E.Value
+messageEncoded sender ( subject, predicate, object ) =
+    [ ( "sender", E.string sender )
+    , ( "subject", E.string subject )
+    , ( "predicate", E.string predicate )
+    , ( "object", E.string object )
+    ]
+        |> E.object
+
+
+messageDecoder : D.Decoder Message
+messageDecoder =
+    D.map4 Message
+        (D.field "sender" D.string)
+        (D.field "subject" D.string)
+        (D.field "predicate" D.string)
+        (D.field "object" D.string)
+
+
+initialObjLibrary =
+    Dict.empty
+
+
+initialComputer : Computer
+initialComputer =
+    { inbox = []
+    , secondsBeforeSend = 0
+    , touch = { list = [], current = Nothing, change = Nothing, previous = Nothing }
+    , mouse = Mouse 0 0 False False
+    , keyboard = emptyKeyboard
+    , screen = toScreen 600 600
+    , time = beginOfTime
+    }
+
+
+{-| Game init function
+-}
+gameInit : memory -> () -> ( Game memory, Cmd Msg )
+gameInit initialMemory () =
+    ( Game E.Visible Nothing initialObjLibrary initialMemory initialComputer
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        ]
+    )
+
+
+networkGameInit : WithMessages memory -> () -> ( Game (WithMessages memory), Cmd Msg )
+networkGameInit initialMemory () =
+    ( Game E.Visible Nothing initialObjLibrary initialMemory initialComputer
+    , Cmd.batch
+        [ Task.perform GotViewport Dom.getViewport
+        , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        ]
+    )
+
+
+{-| Game view function
+-}
+gameView : (memory -> Camera) -> (Computer -> memory -> List Shape) -> Game memory -> Html.Html Msg
+gameView cam viewMemory (Game _ font objLibrary memory computer) =
+    render
+        (cam memory)
+        { screen = computer.screen, font = font, objFiles = objLibrary }
+        (viewMemory computer memory)
+
+
+
+-- SUBSCRIPTIONS
+
+
+{-| Game subscriptions
+-}
+gameSubscriptions : Game memory -> Sub Msg
+gameSubscriptions (Game visibility _ _ _ _) =
+    case visibility of
+        E.Hidden ->
+            E.onVisibilityChange VisibilityChanged
+
+        E.Visible ->
+            Sub.batch
+                [ E.onResize Resized
+                , E.onKeyUp (D.map (KeyChanged False) (D.field "key" D.string))
+                , E.onKeyDown (D.map (KeyChanged True) (D.field "key" D.string))
+                , E.onAnimationFrame Tick
+                , E.onVisibilityChange VisibilityChanged
+                , E.onClick (D.succeed MouseClick)
+                , E.onMouseDown (D.succeed (MouseButton True))
+                , E.onMouseUp (D.succeed (MouseButton False))
+                , E.onMouseMove (D.map2 MouseMove (D.field "pageX" D.float) (D.field "pageY" D.float))
+                ]
+
+
+
+-- GAME HELPERS
+
+
+{-| Game model containing the visibility status, custom data (memory) and the Computer state record.
+-}
+type Game memory
+    = Game E.Visibility (Maybe Font) ObjLibrary memory Computer
+
+
+{-| Animation message alias
+-}
+type alias AnimationMsg =
+    Msg
+
+
+{-| Game message alias
+-}
+type alias GameMsg =
+    Msg
+
+
+{-| Camera type
+-}
+type alias Camera =
+    { mode : CameraMode
+    , target : Maybe (Point3d Meters ObjCoordinates)
+    }
+
+
+{-| Camera Mode type
+-}
+type CameraMode
+    = FirstPerson (Point3d Meters ObjCoordinates) Angle
+    | Isometric Length Length
+    | Orbit Number Number Number Angle
+    | PanTiltZoomFov (Point3d Meters ObjCoordinates) Angle Angle Number Angle
+    | Framed Frame Number Angle
+
+
+{-| Create an isometric camera
+-}
+isometric : Camera
+isometric =
+    Camera (Isometric (Length.meters 10) (Length.meters 5)) (Just Point3d.origin)
+
+
+{-| Create a camera orbiting the target set with `lookAt`, with a specified
+azimuth, elevation (in degrees) and distance
+-}
+orbit : Number -> Number -> Number -> Camera
+orbit azimuth elevation distance =
+    Camera (Orbit azimuth elevation distance (Angle.degrees 40)) (Just Point3d.origin)
+
+
+{-| Create a camera looking from a point x y z, towards the origin (0, 0, 0)
+-}
+eyesAt : Number -> Number -> Number -> Camera
+eyesAt x y z =
+    Camera (FirstPerson (Point3d.centimeters x y z) (Angle.degrees 40)) (Just Point3d.origin)
+
+
+{-| Modify a camera to look at a specific point x y z
+-}
+lookAt : Number -> Number -> Number -> Camera -> Camera
+lookAt x y z cam =
+    { cam | target = Just (Point3d.centimeters x y z) }
+
+
+{-| Pan the camera for a specified number of degrees.
+-}
+pan : Number -> Camera -> Camera
+pan angle cam =
+    { cam
+        | mode =
+            case cam.mode of
+                FirstPerson position fov ->
+                    PanTiltZoomFov position (Angle.degrees angle) (Angle.degrees 0) 1 fov
+
+                Isometric distance height ->
+                    PanTiltZoomFov Point3d.origin (Angle.degrees angle) (Angle.degrees 0) 1 (Angle.degrees 40)
+
+                Orbit azymuth elevation distance fov ->
+                    PanTiltZoomFov (Point3d.origin |> Point3d.translateIn Direction3d.x (Length.meters -distance)) (Angle.degrees angle) (Angle.degrees 0) 1 fov
+
+                PanTiltZoomFov position p t z fov ->
+                    PanTiltZoomFov position (Angle.degrees angle) t z fov
+
+                Framed frame z fov ->
+                    Framed (frame |> Frame3d.rotateAround (Frame3d.zAxis frame) (Angle.degrees angle)) z fov
+    }
+
+
+{-| Tilt the camera for a specified number of degrees.
+-}
+tilt : Number -> Camera -> Camera
+tilt angle cam =
+    { cam
+        | mode =
+            case cam.mode of
+                FirstPerson position fov ->
+                    PanTiltZoomFov position (Angle.degrees 0) (Angle.degrees angle) 1 fov
+
+                Isometric distance height ->
+                    PanTiltZoomFov Point3d.origin (Angle.degrees 0) (Angle.degrees angle) 1 (Angle.degrees 40)
+
+                Orbit azymuth elevation distance fov ->
+                    PanTiltZoomFov (Point3d.origin |> Point3d.translateIn Direction3d.x (Length.meters -distance)) (Angle.degrees 0) (Angle.degrees angle) 1 fov
+
+                PanTiltZoomFov position p t z fov ->
+                    PanTiltZoomFov position p (Angle.degrees angle) z fov
+
+                Framed frame z fov ->
+                    Framed (frame |> Frame3d.rotateAround (Frame3d.yAxis frame) (Angle.degrees angle)) z fov
+    }
+
+
+{-| Shift the camera along the x, y, and z axis (in centimeters).
+-}
+shift : Number -> Number -> Number -> Camera -> Camera
+shift x y z cam =
+    { cam
+        | mode =
+            case cam.mode of
+                FirstPerson position fov ->
+                    FirstPerson (position |> Point3d.translateBy (Vector3d.centimeters x y z)) fov
+
+                Isometric distance height ->
+                    PanTiltZoomFov (Point3d.origin |> Point3d.translateBy (Vector3d.centimeters x y z)) (Angle.degrees 0) (Angle.degrees 0) 1 (Angle.degrees 40)
+
+                Orbit azymuth elevation distance fov ->
+                    PanTiltZoomFov (Point3d.centimeters x y z) (Angle.degrees 0) (Angle.degrees 0) 1 fov
+
+                PanTiltZoomFov position p t zm fov ->
+                    PanTiltZoomFov (position |> Point3d.translateBy (Vector3d.centimeters x y zm)) p t z fov
+
+                Framed frame zm fov ->
+                    Framed (frame |> Frame3d.translateBy (Vector3d.centimeters x y z)) z fov
+    }
+
+
+{-| Let the camera zoom in (factor > 1) or out (factor < 1, while greater than 0 -
+if not, the zoom factor will be just 1).
+-}
+zoom : Number -> Camera -> Camera
+zoom factor cam =
+    if factor == 0 then
+        cam
+
+    else
+        { cam
+            | mode =
+                case cam.mode of
+                    FirstPerson position fov ->
+                        FirstPerson position (fov |> Quantity.divideBy factor)
+
+                    Isometric distance height ->
+                        Isometric (distance |> Quantity.divideBy factor) height
+
+                    Orbit azymuth elevation distance fov ->
+                        Orbit azymuth elevation distance (fov |> Quantity.divideBy factor)
+
+                    PanTiltZoomFov position p t z fov ->
+                        PanTiltZoomFov position p t factor fov
+
+                    Framed frame _ fov ->
+                        Framed frame factor fov
+        }
+
+
+{-| Playground message type
+-}
+type Msg
+    = KeyChanged Bool String
+    | Tick Time.Posix
+    | GotViewport Dom.Viewport
+    | Resized Int Int
+    | VisibilityChanged E.Visibility
+    | MouseMove Float Float
+    | MouseClick
+    | MouseButton Bool
+    | TouchMove Touch.Event
+    | MessagesReceived (Result Http.Error (List Message))
+    | GotFont (Result WebGL.Texture.Error Font)
+    | GotObj String (Result Http.Error ObjWithMaterials)
+
+
+{-| Game update function
+-}
+gameUpdate : (Computer -> memory -> memory) -> Msg -> Game memory -> Game memory
+gameUpdate updateMemory msg (Game vis font objLibrary memory computer) =
+    case msg of
+        Tick time ->
+            Game vis font objLibrary (updateMemory computer memory) <|
+                if computer.mouse.click then
+                    { computer | time = Time time, mouse = mouseClick False computer.mouse }
+
+                else
+                    { computer | time = Time time }
+
+        GotViewport { viewport } ->
+            Game vis font objLibrary memory { computer | screen = toScreen viewport.width viewport.height }
+
+        GotFont (Ok texture) ->
+            Game vis (Just texture) objLibrary memory computer
+
+        GotFont (Err _) ->
+            Game vis font objLibrary memory computer
+
+        Resized w h ->
+            Game vis font objLibrary memory { computer | screen = toScreen (toFloat w) (toFloat h) }
+
+        KeyChanged isDown key ->
+            Game vis font objLibrary memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+
+        MessagesReceived (Ok messages) ->
+            Game vis font objLibrary memory { computer | inbox = messages }
+
+        MessagesReceived (Err _) ->
+            Game vis font objLibrary memory computer
+
+        MouseMove pageX pageY ->
+            let
+                x =
+                    computer.screen.left + pageX
+
+                y =
+                    computer.screen.top - pageY
+            in
+            Game vis font objLibrary memory { computer | mouse = mouseMove x y computer.mouse }
+
+        MouseClick ->
+            Game vis font objLibrary memory { computer | mouse = mouseClick True computer.mouse }
+
+        MouseButton isDown ->
+            Game vis font objLibrary memory { computer | mouse = mouseDown isDown computer.mouse }
+
+        TouchMove te ->
+            let
+                positions =
+                    List.map
+                        (\{ clientPos } ->
+                            case clientPos of
+                                ( x, y ) ->
+                                    { x = x, y = y }
+                        )
+                        te.touches
+
+                position =
+                    List.head positions
+            in
+            Game vis
+                font
+                objLibrary
+                memory
+                { computer
+                    | touch =
+                        { list = positions
+                        , current = position
+                        , previous = computer.touch.current
+                        , change =
+                            case ( position, computer.touch.previous ) of
+                                ( Just new, Just old ) ->
+                                    Just
+                                        { x = new.x - old.x
+                                        , y = new.y - old.y
+                                        }
+
+                                _ ->
+                                    Nothing
+                        }
+                }
+
+        VisibilityChanged visibility ->
+            Game visibility
+                font
+                objLibrary
+                memory
+                { computer
+                    | keyboard = emptyKeyboard
+                    , mouse = Mouse computer.mouse.x computer.mouse.y False False
+                }
+
+        GotObj url (Ok objWithMaterials) ->
+            let
+                newLibrary =
+                    objLibrary |> Dict.insert url (ObjLoaded objWithMaterials)
+            in
+            Game vis font newLibrary memory computer
+
+        GotObj url _ ->
+            let
+                newLibrary =
+                    objLibrary |> Dict.insert url ObjDecodeError
+            in
+            Game vis font newLibrary memory computer
+
+
+
+-- ( { p | objFiles = p.objFiles |> Dict.insert url ObjDecodeError }, Cmd.none )
+
+
+networkGameUpdate : (Computer -> WithMessages memory -> WithMessages memory) -> Msg -> Game (WithMessages memory) -> Game (WithMessages memory)
+networkGameUpdate updateMemory msg (Game vis font objLibrary memory computer) =
+    case msg of
+        Tick time ->
+            Game vis font objLibrary (updateMemory computer memory) <|
+                if computer.mouse.click then
+                    { computer | time = Time time, mouse = mouseClick False computer.mouse }
+
+                else
+                    { computer | time = Time time }
+
+        GotViewport { viewport } ->
+            Game vis font objLibrary memory { computer | screen = toScreen viewport.width viewport.height }
+
+        GotFont (Ok texture) ->
+            Game vis (Just texture) objLibrary memory computer
+
+        GotFont (Err _) ->
+            Game vis font objLibrary memory computer
+
+        Resized w h ->
+            Game vis font objLibrary memory { computer | screen = toScreen (toFloat w) (toFloat h) }
+
+        KeyChanged isDown key ->
+            Game vis font objLibrary memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+
+        MessagesReceived (Ok messages) ->
+            Game vis font objLibrary memory { computer | inbox = messages }
+
+        MessagesReceived (Err _) ->
+            Game vis font objLibrary memory computer
+
+        MouseMove pageX pageY ->
+            let
+                x =
+                    computer.screen.left + pageX
+
+                y =
+                    computer.screen.top - pageY
+            in
+            Game vis font objLibrary memory { computer | mouse = mouseMove x y computer.mouse }
+
+        MouseClick ->
+            Game vis font objLibrary memory { computer | mouse = mouseClick True computer.mouse }
+
+        MouseButton isDown ->
+            Game vis font objLibrary memory { computer | mouse = mouseDown isDown computer.mouse }
+
+        TouchMove te ->
+            let
+                positions =
+                    List.map
+                        (\{ clientPos } ->
+                            case clientPos of
+                                ( x, y ) ->
+                                    { x = x, y = y }
+                        )
+                        te.touches
+
+                position =
+                    List.head positions
+            in
+            Game vis
+                font
+                objLibrary
+                memory
+                { computer
+                    | touch =
+                        { list = positions
+                        , current = position
+                        , previous = computer.touch.current
+                        , change =
+                            case ( position, computer.touch.previous ) of
+                                ( Just new, Just old ) ->
+                                    Just
+                                        { x = new.x - old.x
+                                        , y = new.y - old.y
+                                        }
+
+                                _ ->
+                                    Nothing
+                        }
+                }
+
+        VisibilityChanged visibility ->
+            Game visibility
+                font
+                objLibrary
+                memory
+                { computer
+                    | keyboard = emptyKeyboard
+                    , mouse = Mouse computer.mouse.x computer.mouse.y False False
+                }
+
+        GotObj url (Ok objWithMaterials) ->
+            let
+                newLibrary =
+                    objLibrary |> Dict.insert url (ObjLoaded objWithMaterials)
+            in
+            Game vis font newLibrary memory computer
+
+        GotObj url _ ->
+            let
+                newLibrary =
+                    objLibrary |> Dict.insert url ObjDecodeError
+            in
+            Game vis font newLibrary memory computer
+
+
+
+-- SCREEN HELPERS
+
+
+toScreen : Float -> Float -> Screen
+toScreen width height =
+    { width = width
+    , height = height
+    , top = height / 2
+    , left = -width / 2
+    , right = width / 2
+    , bottom = -height / 2
+    }
+
+
+
+-- MOUSE HELPERS
+
+
+mouseClick : Bool -> Mouse -> Mouse
+mouseClick bool mouse =
+    { mouse | click = bool }
+
+
+mouseDown : Bool -> Mouse -> Mouse
+mouseDown bool mouse =
+    { mouse | down = bool }
+
+
+mouseMove : Float -> Float -> Mouse -> Mouse
+mouseMove x y mouse =
+    { mouse | x = x, y = y }
+
+
+
+-- KEYBOARD HELPERS
+
+
+emptyKeyboard : Keyboard
+emptyKeyboard =
+    { up = False
+    , down = False
+    , left = False
+    , right = False
+    , space = False
+    , enter = False
+    , shift = False
+    , backspace = False
+    , keys = Set.empty
+    }
+
+
+updateKeyboard : Bool -> String -> Keyboard -> Keyboard
+updateKeyboard isDown key keyboard =
+    let
+        keys =
+            if isDown then
+                Set.insert key keyboard.keys
+
+            else
+                Set.remove key keyboard.keys
+    in
+    case key of
+        " " ->
+            { keyboard | keys = keys, space = isDown }
+
+        "Enter" ->
+            { keyboard | keys = keys, enter = isDown }
+
+        "Shift" ->
+            { keyboard | keys = keys, shift = isDown }
+
+        "Backspace" ->
+            { keyboard | keys = keys, backspace = isDown }
+
+        "ArrowUp" ->
+            { keyboard | keys = keys, up = isDown }
+
+        "ArrowDown" ->
+            { keyboard | keys = keys, down = isDown }
+
+        "ArrowLeft" ->
+            { keyboard | keys = keys, left = isDown }
+
+        "ArrowRight" ->
+            { keyboard | keys = keys, right = isDown }
+
+        _ ->
+            { keyboard | keys = keys }
+
+
+
+-- SHAPES
+
+
+{-| Shapes help you make a `picture`, `animation`, or `game`.
+
+Read on to see examples of [`circle`](#circle), [`rectangle`](#rectangle),
+[`words`](#words), [`image`](#image), and many more!
+
+-}
+type Shape
+    = Shape
+        Number
+        -- x
+        Number
+        -- y
+        Number
+        -- z
+        Number
+        -- angle roll
+        Number
+        -- angle pitch
+        Number
+        -- angle yaw
+        Number
+        -- scale
+        Number
+        -- alpha
+        String
+        -- name to make shapes identifiable
+        (Maybe Physics)
+        -- to avoid issues like gimbal lock with physics
+        -- if this is set, use its frame as the transform
+        -- ignoring position and rotation values
+        Form
+
+
+type alias Physics =
+    { frame : Frame
+    , constraints : List Constraint
+    , mass : Maybe Mass
+    , friction : Maybe Number
+    , bounciness : Maybe Number
+    }
+
+
+type alias Frame =
+    Frame3d Meters ObjCoordinates { defines : ObjCoordinates }
+
+
+type Constraint
+    = LockedPositionTo String
+    | FixedDistanceTo String
+    | HingedTo String
+
+
+type Form
+    = Group (List Shape)
+    | Circle Color Number
+    | Triangle Color Number
+    | Square Color Number
+    | Rectangle Color Number Number
+    | Polygon Color (List ( Number, Number ))
+    | Snake Color (List ( Number, Number, Number ))
+    | Sphere Color Number
+    | Cylinder Color Number Number
+    | Cone Color Number Number
+    | Cube Color Number
+    | Block Color Number Number Number
+    | Prism Color Number Number
+    | Wall Color Number (List ( Number, Number, Number ))
+    | ExtrudedPolygon Color Number (List ( Number, Number ))
+    | Words Color String
+    | Object Color (List ( Number, Number, Number )) (List ( Int, Int, Int ))
+    | ObjFile Color String
+    | Entity (Entity ObjCoordinates)
+
+
+type alias Font =
+    Texture Color
+
+
+
+--    | ExtrudedPolygon Color Number (List ( Number, Number ))
+
+
+{-| Make circles:
+
+    dot =
+        circle red 10
+
+    sun =
+        circle yellow 300
+
+You give a color and then the radius. So the higher the number, the larger
+the circle.
+
+-}
+circle : Color -> Number -> Shape
+circle color radius =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Circle color radius)
+
+
+{-| Make cylinders:
+
+    pillar =
+        cylinder red 10 50
+
+You give a color, the radius and then the height.
+
+-}
+cylinder : Color -> Number -> Number -> Shape
+cylinder color radius height =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Cylinder color radius height)
+
+
+{-| Make cones:
+
+    spike =
+        cone red 10 50
+
+You give a color, the radius and then the height.
+
+-}
+cone : Color -> Number -> Number -> Shape
+cone color radius height =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Cone color radius height)
+
+
+{-| Make triangles:
+
+    triangle blue 50
+
+You give a color and then its size.
+
+-}
+triangle : Color -> Number -> Shape
+triangle color size =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Triangle color size)
+
+
+{-| Make squares. Here are two squares combined to look like an empty box:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ square purple 80
+            , square white 60
+            ]
+
+The number you give is the dimension of each side. So that purple square would
+be 80 pixels by 80 pixels.
+
+-}
+square : Color -> Number -> Shape
+square color n =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Rectangle color n n)
+
+
+{-| Make rectangles. This example makes a red cross:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ rectangle red 20 60
+            , rectangle red 60 20
+            ]
+
+You give the color, width, and then height. So the first shape is vertical
+part of the cross, the thinner and taller part.
+
+-}
+rectangle : Color -> Number -> Number -> Shape
+rectangle color width height =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Rectangle color width height)
+
+
+{-| Make any shape you want! Here is a very thin triangle:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ polygon black [ ( -10, -20 ), ( 0, 100 ), ( 10, -20 ) ]
+            ]
+
+**Note:** If you [`rotate`](#rotate) a polygon, it will always rotate around
+`(0,0)`. So it is best to build your shapes around that point, and then use
+[`move`](#move) or [`group`](#group) so that rotation makes more sense.
+
+-}
+polygon : Color -> List ( Number, Number ) -> Shape
+polygon color points =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Polygon color points)
+
+
+{-| Make a snake!
+-}
+snake : Color -> List ( Number, Number, Number ) -> Shape
+snake color points =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Snake color points)
+
+
+{-| Make sphere:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ sphere green 10
+            ]
+
+You give the color, width, height, and then depth. So the first shape is the
+vertical part of the cross, the thinner and taller part.
+
+-}
+sphere : Color -> Number -> Shape
+sphere color size =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Sphere color size)
+
+
+{-| Make cubes:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ cube blue 10
+            ]
+
+You give the color, width, height, and then depth. So the first shape is the
+vertical part of the cross, the thinner and taller part.
+
+-}
+cube : Color -> Number -> Shape
+cube color size =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Cube color size)
+
+
+{-| Make blocks. This example makes a red cross:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ block red 20 60 10
+            , block red 60 20 10
+            ]
+
+You give the color, width, height, and then depth. So the first shape is the
+vertical part of the cross, the thinner and taller part.
+
+-}
+block : Color -> Number -> Number -> Number -> Shape
+block color width height depth =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Block color width height depth)
+
+
+{-| Make a prism
+-}
+prism : Color -> Number -> Number -> Shape
+prism color size height =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Prism color size height)
+
+
+{-| Make 3d objects from vertices and faces, such as a pyramid:
+
+    import Playground3d exposing (..)
+
+    main =
+        picture
+            [ obj
+                [ ( 1, 1, -1 )
+                , ( 1, -1, -1 )
+                , ( -1, -1, -1 )
+                , ( -1, 1, -1 )
+                , ( 0, 0, 1 )
+                ]
+                [ ( 1, 2, 3 )
+                , ( 3, 4, 1 )
+                , ( 1, 4, 5 )
+                , ( 5, 4, 3 )
+                , ( 3, 2, 5 )
+                , ( 5, 2, 1 )
+                ]
+            ]
+
+-}
+obj : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Shape
+obj color vertices faces =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Object color vertices faces)
+
+
+
+{- Use a .obj model by url. -}
+
+
+objFile : Color -> String -> Shape
+objFile color url =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (ObjFile color url)
+
+
+{-| 3D shapes can be quite intensive to render, so it is best to render the more
+complex shapes into an 3D entity once and then draw this prerendered version in
+the view. You can still use transformation functions from the `Scene3d` package
+such as translation and rotation on the prerendered entities.
+
+For instance if you would like to prerender parts of your snow dog avatar but
+still want to animate its head:
+
+    snowdog time =
+        group
+            [ head white
+                |> prerendered
+                |> move 50 0 70
+                |> yaw (wave -30 30 6 time)
+                |> pitch (wave -10 10 3 time)
+            , group
+                [ cylinder white 15 80 |> pitch 90 |> moveZ 50
+                , leg |> move 35 10 20
+                , leg |> move 35 -10 20
+                , leg |> move -35 10 20
+                , leg |> move -35 -10 20
+                , cylinder white 7 50 |> pitch -45 |> move -50 0 75
+                ]
+                |> prerendered
+            ]
+
+    leg =
+        cylinder white 10 40
+
+    head color =
+        group
+            [ sphere color 25
+            , sphere color 10 |> move 25 0 -5
+            , sphere black 5 |> move 35 0 -5
+            , sphere black 5 |> move 17 12 5
+            , sphere black 5 |> move 17 -12 5
+            , triangle color 20
+                |> move -5 12 37
+                |> yaw 170
+                |> pitch 83
+                |> roll 2
+                |> scale 0.4
+            , triangle color 20
+                |> move -5 -12 37
+                |> yaw 190
+                |> pitch 83
+                |> roll -2
+                |> scale 0.4
+            ]
+
+-}
+prerendered : ObjLibrary -> Shape -> Shape
+prerendered objLibrary =
+    entity objLibrary >> Entity >> Shape 0 0 0 0 0 0 1 1 "" Nothing
+
+
+{-| Put shapes together so you can [`move`](#move) and [`rotate`](#rotate)
+them as a group. Maybe you want to put a bunch of stars in the sky:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ star
+                |> move 100 100
+                |> rotate 5
+            , star
+                |> move -120 40
+                |> rotate 20
+            , star
+                |> move 80 -150
+                |> rotate 32
+            , star
+                |> move -90 -30
+                |> rotate -16
+            ]
+
+    star =
+        group
+            [ triangle yellow 20
+            , triangle yellow 20
+                |> rotate 180
+            ]
+
+-}
+group : List Shape -> Shape
+group shapes =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Group shapes)
+
+
+{-| Pull a 2D shape "up" to form a 3D body:
+
+    circle blue 20
+        |> extrude 50
+
+This will create a flat circle "extruded" along the
+z-axis to form a 3D cylinder. The extruded form is
+centered around the xy-plane.
+
+-}
+extrude : Number -> Shape -> Shape
+extrude h shape =
+    case shape of
+        Shape x y z rr rp ry s a n mf (Group shapes) ->
+            shapes
+                |> List.map (extrude h)
+                |> Group
+                |> Shape x y z rr rp ry s a n mf
+
+        Shape x y z rr rp ry s a n mf (Circle c r) ->
+            Shape x y z rr rp ry s a n mf (Cylinder c r h)
+
+        Shape x y z rr rp ry s a n mf (Square c r) ->
+            if h == r then
+                Shape x y z rr rp ry s a n mf (Cube c r)
+
+            else
+                Shape x y z rr rp ry s a n mf (Block c r r h)
+
+        Shape x y z rr rp ry s a n mf (Rectangle c wb hb) ->
+            Shape x y z rr rp ry s a n mf (Block c wb hb h)
+
+        Shape x y z rr rp ry s a n mf (Triangle c size) ->
+            Shape x y z rr rp ry s a n mf (Prism c size h)
+
+        Shape x y z rr rp ry s a n mf (Polygon c points) ->
+            Shape x y z rr rp ry s a n mf (ExtrudedPolygon c h points)
+
+        Shape x y z rr rp ry s a n mf (Snake c p) ->
+            Shape x y z rr rp ry s a n mf (Wall c h p)
+
+        _ ->
+            shape
+
+
+{-| Pull a 2D shape "up" to form a 3D body:
+
+    circle blue 20
+        |> pullUp 50
+
+This will create a flat circle "pulled up" (or "extruded") along the
+z-axis to form a 3D cylinder.
+
+-}
+pullUp : Number -> Shape -> Shape
+pullUp h shape =
+    case shape of
+        Shape x y z rr rp ry s a n mf (Group shapes) ->
+            shapes
+                |> List.map (pullUp h)
+                |> Group
+                |> Shape x y z rr rp ry s a n mf
+
+        Shape x y z rr rp ry s a n mf (Circle c r) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (Cylinder c r h)
+
+        Shape x y z rr rp ry s a n mf (Square c r) ->
+            if h == r then
+                Shape x y (z + h / 2) rr rp ry s a n mf (Cube c r)
+
+            else
+                Shape x y (z + h / 2) rr rp ry s a n mf (Block c r r h)
+
+        Shape x y z rr rp ry s a n mf (Rectangle c wb hb) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (Block c wb hb h)
+
+        Shape x y z rr rp ry s a n mf (Triangle c size) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (Prism c size h)
+
+        Shape x y z rr rp ry s a n mf (Snake c p) ->
+            Shape x y z rr rp ry s a n mf (Wall c h (p |> List.map (\( px, py, pz ) -> ( px, py, pz + h / 2 ))))
+
+        Shape x y z rr rp ry s a n mf (Polygon c points) ->
+            Shape x y (z + h / 2) rr rp ry s a n mf (ExtrudedPolygon c h points)
+
+        _ ->
+            shape
+
+
+{-| Show some words!
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ words black "Hello! How are you?"
+            ]
+
+You can use [`scale`](#scale) to make the words bigger or smaller.
+
+-}
+words : Color -> String -> Shape
+words color string =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Words color string)
+
+
+{-| Name a shape. This lets you set a name for a shape, so you can detect when
+it is clicked.
+
+    import Playground exposing (..)
+
+    main =
+        game view update {}
+
+    view computer memory =
+        [ square
+            (if computer.mouse |> clickedName "little square" then
+                red
+
+             else
+                green
+            )
+            30
+            |> withName "little square"
+        ]
+
+    update computer memory =
+        memory
+
+-}
+withName : String -> Shape -> Shape
+withName n (Shape x y z rx ry rz s o _ mf f) =
+    Shape x y z rx ry rz s o n mf f
+
+
+{-| Return the name of the given shape; if no name was set it returns an empty
+string `""`.
+-}
+nameOf : Shape -> String
+nameOf (Shape _ _ _ _ _ _ _ _ n _ _) =
+    n
+
+
+
+-- TRANSFORMS
+
+
+{-| Move a shape by some number of pixels:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ square red 100
+                |> move -60 60 0
+            , square yellow 100
+                |> move 60 60 0
+            , square green 100
+                |> move 60 -60 0
+            , square blue 100
+                |> move -60 -60 0
+            ]
+
+-}
+move : Number -> Number -> Number -> Shape -> Shape
+move dx dy dz (Shape x y z rr rp ry s o n mf f) =
+    Shape (x + dx) (y + dy) (z + dz) rr rp ry s o n mf f
+
+
+{-| Move the `x` coordinate of a shape by some amount. Here is a square that
+moves back and forth:
+
+    import Playground exposing (..)
+
+    main =
+        animation view
+
+    view time =
+        [ square purple 20
+            |> moveX (wave 4 -200 200 time)
+        ]
+
+Using `moveX` feels a bit nicer here because the movement may be positive or negative.
+
+-}
+moveX : Number -> Shape -> Shape
+moveX dx (Shape x y z rr rp ry s o n mf f) =
+    Shape (x + dx) y z rr rp ry s o n mf f
+
+
+{-| Move the `y` coordinate of a shape by some amount. Maybe you want to make
+grass along the bottom of the screen:
+
+    import Playground exposing (..)
+
+    main =
+        game view update 0
+
+    update computer memory =
+        memory
+
+    view computer count =
+        [ rectangle green computer.screen.width 100
+            |> moveY computer.screen.bottom
+        ]
+
+Using `moveY` feels a bit nicer when setting things relative to the bottom or
+top of the screen, since the values are negative sometimes.
+
+-}
+moveY : Number -> Shape -> Shape
+moveY dy (Shape x y z rr rp ry s o n mf f) =
+    Shape x (y + dy) z rr rp ry s o n mf f
+
+
+{-| Move the `z` coordinate of a shape by some amount:
+-}
+moveZ : Number -> Shape -> Shape
+moveZ dz (Shape x y z rr rp ry s o n mf f) =
+    Shape x y (z + dz) rr rp ry s o n mf f
+
+
+{-| Move a shape along a path, specified by a list of coordinate-pairs,
+and a number between 0 and 1, where 0 corresponds with the start of the
+path and 1 indicates arriving at the end, the last coordinate in the list.
+So in the example below, the circle is moved halfway on the path:
+
+    cube red 50
+        |> moveAlong [ ( 100, 0, 0 ), ( 200, 200, 0 ), ( 400, 200, 100 ) ] 0.5
+
+-}
+moveAlong : List ( Number, Number, Number ) -> Number -> Shape -> Shape
+moveAlong coords amount ((Shape x y z rr rp ry s o n mf f) as shape) =
+    let
+        totalLength =
+            case coords of
+                ( x1, y1, z1 ) :: rest ->
+                    rest
+                        |> List.foldl
+                            (\( x3, y3, z3 ) ( length, ( x2, y2, z2 ) ) ->
+                                ( length + sqrt ((x3 - x2) ^ 2 + (y3 - y2) ^ 2 + (z3 - z2) ^ 2), ( x3, y3, z3 ) )
+                            )
+                            ( 0, ( x1, y1, z1 ) )
+                        |> Tuple.first
+
+                _ ->
+                    0
+
+        ( nx, ny, nz ) =
+            case coords of
+                [] ->
+                    ( 0, 0, 0 )
+
+                [ ( x1, y1, z1 ) ] ->
+                    ( x1, y1, z1 )
+
+                ( x1, y1, z1 ) :: rest ->
+                    rest
+                        |> List.foldl
+                            (\( x3, y3, z3 ) ( ( x2, y2, z2 ), amountLeft ) ->
+                                if amountLeft < 0 then
+                                    ( ( x2, y2, z2 ), 0 )
+
+                                else
+                                    let
+                                        length =
+                                            sqrt ((x3 - x2) ^ 2 + (y3 - y2) ^ 2 + (z3 - z2) ^ 2)
+
+                                        factor =
+                                            if length == 0 then
+                                                0
+
+                                            else
+                                                Basics.min amountLeft length / length
+                                    in
+                                    ( ( x2 + (x3 - x2) * factor
+                                      , y2 + (y3 - y2) * factor
+                                      , z2 + (z3 - z2) * factor
+                                      )
+                                    , amountLeft - length
+                                    )
+                            )
+                            ( ( x1, y1, z1 ), amount * totalLength )
+                        |> Tuple.first
+    in
+    Shape (x + nx) (y + ny) (z + nz) rr rp ry s o n mf f
+
+
+{-| Move a shape along a path, just like with moveAlong, but by adding the first
+point also as the last one, we make sure that when amount reaches 1, we end up
+back at the beginning of the path. In this way you can keep looping from 0 to 1
+and continue from 0 again.
+-}
+moveAlongLoop : List ( Number, Number, Number ) -> Number -> Shape -> Shape
+moveAlongLoop coords amount shape =
+    let
+        loop =
+            case coords of
+                [] ->
+                    []
+
+                [ point ] ->
+                    [ point ]
+
+                point :: rest ->
+                    point :: rest ++ [ point ]
+    in
+    moveAlong loop amount shape
+
+
+{-| Make a shape bigger or smaller. So if you wanted some [`words`](#words) to
+be larger, you could say:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ words black "Hello, nice to see you!"
+                |> scale 3
+            ]
+
+-}
+scale : Number -> Shape -> Shape
+scale ns (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z rr rp ry (s * ns) o n mf f
+
+
+{-| Rotate shapes in degrees.
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle black 50
+                |> rotate 10
+            ]
+
+The degrees go **counter-clockwise** to match the direction of the
+[unit circle](https://en.wikipedia.org/wiki/Unit_circle).
+
+-}
+rotate : Number -> Shape -> Shape
+rotate da (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z (rr + da) rp ry s o n mf f
+
+
+{-| Rotate shapes in degrees, along the X axis:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle black 50
+                |> roll 10
+            ]
+
+    Search Wikipedia for "roll, pitch, yaw" to find out why it is called "roll". ;)
+
+-}
+roll : Number -> Shape -> Shape
+roll dr (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z (rr + dr) rp ry s o n mf f
+
+
+{-| Rotate shapes in degrees, along the Y axis:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle black 50
+                |> pitch 10
+            ]
+
+    Search Wikipedia for "roll, pitch, yaw" to find out why it is called "pitch". ;)
+
+-}
+pitch : Number -> Shape -> Shape
+pitch dp (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z rr (rp + dp) ry s o n mf f
+
+
+{-| Rotate shapes in degrees, along the Z axis:
+
+    import Playground exposing (..)
+
+    main =
+        picture
+            [ triangle black 50
+                |> yaw 10
+            ]
+
+    Search Wikipedia for "roll, pitch, yaw" to find out why it is called "yaw". ;)
+
+-}
+yaw : Number -> Shape -> Shape
+yaw dy (Shape x y z rr rp ry s o n mf f) =
+    Shape x y z rr rp (ry + dy) s o n mf f
+
+
+{-| Fade a shape. This lets you make shapes see-through or even completely
+invisible. Here is a shape that fades in and out:
+
+    import Playground exposing (..)
+
+    main =
+        animation view
+
+    view time =
+        [ square orange 30
+        , square blue 200
+            |> fade (zigzag 0 1 3 time)
+        ]
+
+The number has to be between `0` and `1`, where `0` is totally transparent
+and `1` is completely solid.
+
+-}
+fade : Number -> Shape -> Shape
+fade o (Shape x y z rr rp ry s _ n mf f) =
+    Shape x y z rr rp ry s o n mf f
+
+
+{-| -}
+lightYellow : Color
+lightYellow =
+    Color.lightYellow
+
+
+{-| -}
+yellow : Color
+yellow =
+    Color.yellow
+
+
+{-| -}
+darkYellow : Color
+darkYellow =
+    Color.darkYellow
+
+
+{-| -}
+lightOrange : Color
+lightOrange =
+    Color.lightOrange
+
+
+{-| -}
+orange : Color
+orange =
+    Color.orange
+
+
+{-| -}
+darkOrange : Color
+darkOrange =
+    Color.darkOrange
+
+
+{-| -}
+lightBrown : Color
+lightBrown =
+    Color.lightBrown
+
+
+{-| -}
+brown : Color
+brown =
+    Color.brown
+
+
+{-| -}
+darkBrown : Color
+darkBrown =
+    Color.darkBrown
+
+
+{-| -}
+lightGreen : Color
+lightGreen =
+    Color.lightGreen
+
+
+{-| -}
+green : Color
+green =
+    Color.green
+
+
+{-| -}
+darkGreen : Color
+darkGreen =
+    Color.darkGreen
+
+
+{-| -}
+lightBlue : Color
+lightBlue =
+    Color.lightBlue
+
+
+{-| -}
+blue : Color
+blue =
+    Color.blue
+
+
+{-| -}
+darkBlue : Color
+darkBlue =
+    Color.darkBlue
+
+
+{-| -}
+lightPurple : Color
+lightPurple =
+    Color.lightPurple
+
+
+{-| -}
+purple : Color
+purple =
+    Color.purple
+
+
+{-| -}
+darkPurple : Color
+darkPurple =
+    Color.darkPurple
+
+
+{-| -}
+lightRed : Color
+lightRed =
+    Color.lightRed
+
+
+{-| -}
+red : Color
+red =
+    Color.red
+
+
+{-| -}
+darkRed : Color
+darkRed =
+    Color.darkRed
+
+
+{-| -}
+lightGrey : Color
+lightGrey =
+    Color.lightGrey
+
+
+{-| -}
+grey : Color
+grey =
+    Color.grey
+
+
+{-| -}
+darkGrey : Color
+darkGrey =
+    Color.darkGrey
+
+
+{-| -}
+lightCharcoal : Color
+lightCharcoal =
+    Color.lightCharcoal
+
+
+{-| -}
+charcoal : Color
+charcoal =
+    Color.charcoal
+
+
+{-| -}
+darkCharcoal : Color
+darkCharcoal =
+    Color.darkCharcoal
+
+
+{-| -}
+white : Color
+white =
+    Color.white
+
+
+{-| -}
+black : Color
+black =
+    Color.black
+
+
+
+-- ALTERNATE SPELLING GREYS
+
+
+{-| -}
+lightGray : Color
+lightGray =
+    Color.lightGray
+
+
+{-| -}
+gray : Color
+gray =
+    Color.gray
+
+
+{-| -}
+darkGray : Color
+darkGray =
+    Color.darkGray
+
+
+
+-- CUSTOM COLORS
+
+
+{-| RGB stands for Red-Green-Blue. With these three parts, you can create any
+color you want. For example:
+
+    brightBlue =
+        rgb255 18 147 216
+
+    brightGreen =
+        rgb255 119 244 8
+
+    brightPurple =
+        rgb255 94 28 221
+
+For `rgb255` each number needs to be an integer between 0 and 255.
+Also see `rgb`, where each numer is expected to be a floating point number between 0 and 1.
+
+It can be hard to figure out what numbers to pick, so try using a color picker
+like [paletton] to find colors that look nice together. Once you find nice
+colors, click on the color previews to get their RGB values.
+
+[paletton]: http://paletton.com/
+
+-}
+rgb255 : Number -> Number -> Number -> Color
+rgb255 r g b =
+    Color.rgb255 (colorClamp r) (colorClamp g) (colorClamp b)
+
+
+{-| RGB stands for Red-Green-Blue. With these three parts, you can create any
+color you want. For example:
+
+    brightBlue =
+        rgb 0.1 0.6 1
+
+    brightGreen =
+        rgb 0.6 1 0.05
+
+    brightPurple =
+        rgb 0.4 0.1 0.8
+
+For `rgb` each numer is expected to be a floating point number between 0 and 1.
+Also see `rgb255`, where each number needs to be an integer between 0 and 255.
+
+It can be hard to figure out what numbers to pick, so try using a color picker
+like [paletton] to find colors that look nice together. Once you find nice
+colors, click on the color previews to get their RGB values.
+
+[paletton]: http://paletton.com/
+
+-}
+rgb : Number -> Number -> Number -> Color
+rgb r g b =
+    Color.rgb
+        (r |> max 0 |> min 1)
+        (g |> max 0 |> min 1)
+        (b |> max 0 |> min 1)
+
+
+colorClamp : Number -> Int
+colorClamp number =
+    clamp 0 255 (round number)
+
+
+
+-- CALCULATIONS
+
+
+{-| Finds out where named shapes are within a scene (another shape, maybe a group).
+-}
+whereIs : String -> Shape -> List ( Number, Number, Number )
+whereIs name (Shape x y z rx ry rz s _ otherName maybeFrame form) =
+    let
+        transformCoords ( x_, y_, z_ ) =
+            let
+                p =
+                    Point3d.centimeters x y z
+            in
+            p
+                |> Point3d.rotateAround Axis3d.x (Angle.degrees rx)
+                |> Point3d.rotateAround Axis3d.y (Angle.degrees ry)
+                |> Point3d.rotateAround Axis3d.z (Angle.degrees rz)
+                |> Point3d.scaleAbout Point3d.origin s
+                |> Point3d.translateBy (Vector3d.centimeters x_ y_ z_)
+                |> Point3d.unwrap
+                |> (\p_ -> ( p_.x, p_.y, p_.z ))
+    in
+    case form of
+        Group shapes ->
+            List.concatMap (whereIs name >> List.map transformCoords) shapes
+
+        _ ->
+            if name == otherName then
+                [ ( x, y, z ) ]
+
+            else
+                []
+
+
+{-| Returns the weight of a shape as a Mass value (set with `withWeigth` or
+`withMass`).
+-}
+weightOf : Shape -> Mass
+weightOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .mass
+        |> Maybe.withDefault (Mass.kilograms 0.1)
+
+
+{-| Returns the mass of a shape as a Mass value (set with `withMass`).
+-}
+massOf : Shape -> Mass
+massOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .mass
+        |> Maybe.withDefault (Mass.kilograms 0.1)
+
+
+{-| Returns the position of a shape, as a tuple (x, y, z).
+-}
+positionOf : Shape -> ( Number, Number, Number )
+positionOf (Shape x y z _ _ _ _ _ _ _ _) =
+    ( x, y, z )
+
+
+{-| Extracts the position from any shape.
+-}
+center : Shape -> ( Number, Number, Number )
+center =
+    positionOf
+
+
+{-| Calculates the extent from origin (radius) of a sphere that roughly circumscribes the (group of) shape(s).
+TODO: Needs a refactor where offset centers are taken into account within a group.
+-}
+extent : Shape -> Number
+extent (Shape _ _ _ _ _ _ _ _ _ maybeFrame form) =
+    case form of
+        Circle _ size ->
+            size
+
+        Triangle _ size ->
+            size
+
+        Square _ size ->
+            size / 2
+
+        Rectangle _ s1 s2 ->
+            max s1 s2 / 2
+
+        Polygon _ points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            max (maxx - minx) (maxy - miny) / 2
+
+        Snake _ points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            max (maxx - minx) (max (maxy - miny) (maxz - minz)) / 2
+
+        Sphere _ size ->
+            size
+
+        Cylinder _ radius height ->
+            max radius (height / 2)
+
+        Cone _ radius height ->
+            max radius (height / 2)
+
+        Cube _ size ->
+            size / 2
+
+        Block _ w h d ->
+            max w (max h d) / 2
+
+        Prism _ size height ->
+            max size height / 2
+
+        Wall _ height points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            max height (max (maxx - minx) (max (maxy - miny) (maxz - minz))) / 2
+
+        Object _ points _ ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            max (maxx - minx) (max (maxy - miny) (maxz - minz)) / 2
+
+        Words _ _ ->
+            0
+
+        Group shapes ->
+            List.foldl (\s e -> max e (extent s)) 0 shapes
+
+        Entity _ ->
+            0
+
+        ExtrudedPolygon _ height points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            max (max (maxx - minx) (maxy - miny)) height / 2
+
+        ObjFile _ _ ->
+            -- TODO: calc extent - probably easy because of boundingbox
+            0
+
+
+{-| Calculates the extents per axis of any (group of) shape(s). Extent in this case
+means from the center of the object to its edge (a "radius"), so it can directly
+be used in calculations from the origin of the objects.
+-}
+extents : Shape -> ( Number, Number, Number )
+extents (Shape _ _ _ _ _ _ _ _ _ maybeFrame form) =
+    case form of
+        Circle _ size ->
+            ( size, size, 0 )
+
+        Triangle _ size ->
+            ( size, size, 0 )
+
+        Square _ size ->
+            ( size / 2, size / 2, 0 )
+
+        Rectangle _ s1 s2 ->
+            -- This is only a very crude approximation
+            ( s1 / 2, s2 / 2, 0 )
+
+        Polygon _ points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, 0 )
+
+        Snake _ points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, (maxz - minz) / 2 )
+
+        Sphere _ size ->
+            ( size, size, size )
+
+        Cylinder _ radius height ->
+            ( radius, radius, height / 2 )
+
+        Cone _ radius height ->
+            ( radius, radius, height )
+
+        Cube _ size ->
+            ( size / 2, size / 2, size / 2 )
+
+        Block _ w h d ->
+            ( w / 2, h / 2, d / 2 )
+
+        Prism _ radius height ->
+            ( radius, radius, height )
+
+        Wall _ height points ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max (z + height) maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, (maxz - minz) / 2 )
+
+        Object _ points _ ->
+            let
+                ( ( minx, miny, minz ), ( maxx, maxy, maxz ) ) =
+                    List.foldl
+                        (\( x, y, z ) ( ( minx1, miny1, minz1 ), ( maxx1, maxy1, maxz1 ) ) ->
+                            ( ( min x minx1, min y miny1, min z minz1 )
+                            , ( max x maxx1, max y maxy1, max z maxz1 )
+                            )
+                        )
+                        ( ( 0, 0, 0 ), ( 0, 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, (maxz - minz) / 2 )
+
+        Words _ _ ->
+            ( 0, 0, 0 )
+
+        Group shapes ->
+            List.foldl
+                (\s ( ex, ey, ez ) ->
+                    let
+                        ( sx, sy, sz ) =
+                            extents s
+                    in
+                    ( max ex sx, max ey sy, max ez sz )
+                )
+                ( 0, 0, 0 )
+                shapes
+
+        Entity _ ->
+            ( 0, 0, 0 )
+
+        ExtrudedPolygon _ height points ->
+            let
+                ( ( minx, miny ), ( maxx, maxy ) ) =
+                    List.foldl
+                        (\( x, y ) ( ( minx1, miny1 ), ( maxx1, maxy1 ) ) ->
+                            ( ( min x minx1, min y miny1 )
+                            , ( max x maxx1, max y maxy1 )
+                            )
+                        )
+                        ( ( 0, 0 ), ( 0, 0 ) )
+                        points
+            in
+            ( (maxx - minx) / 2, (maxy - miny) / 2, height / 2 )
+
+        ObjFile _ _ ->
+            -- TODO: calc extent - probably easy because of boundingbox
+            ( 0, 0, 0 )
+
+
+
+-- RENDER
+
+
+type alias View =
+    { position : Point3d Meters ObjCoordinates
+    , orientation : Float
+    , cameraMode : CameraMode
+    }
+
+
+render : Camera -> { p | screen : Screen, font : Maybe Font, objFiles : ObjLibrary } -> List Shape -> Html.Html Msg
+render cam { screen, font, objFiles } shapes =
+    Html.div
+        [ Touch.onMove TouchMove
+        ]
+        [ Scene3d.sunny
+            { camera = camera cam
+            , clipDepth = Length.centimeters 0.5
+            , dimensions =
+                ( Pixels.int (round screen.width)
+                , Pixels.int (round screen.height)
+                )
+            , background = Scene3d.transparentBackground
+            , entities =
+                case font of
+                    Nothing ->
+                        List.map (entity objFiles) shapes
+
+                    Just f ->
+                        List.map (entityWithFont f objFiles) shapes
+            , shadows = False
+            , upDirection = Direction3d.y
+            , sunlightDirection = Direction3d.yz (Angle.degrees -120)
+            }
+        ]
+
+
+camera cam =
+    case cam.mode of
+        FirstPerson position fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.lookAt
+                        { eyePoint = position
+                        , focalPoint = cam.target |> Maybe.withDefault Point3d.origin
+                        , upDirection = Direction3d.positiveZ
+                        }
+                , verticalFieldOfView = fov
+                }
+
+        Isometric distance height ->
+            Camera3d.orthographic
+                { viewpoint =
+                    Viewpoint3d.isometric
+                        { focalPoint = cam.target |> Maybe.withDefault Point3d.origin
+                        , distance = distance
+                        }
+                , viewportHeight = height
+                }
+
+        Orbit azymuth elevation distance fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.orbit
+                        { focalPoint = cam.target |> Maybe.withDefault Point3d.origin
+                        , groundPlane = SketchPlane3d.xy
+                        , azimuth = Angle.degrees azymuth
+                        , elevation = Angle.degrees elevation
+                        , distance = Length.centimeters distance
+                        }
+                , verticalFieldOfView = fov
+                }
+
+        PanTiltZoomFov position p t z fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.lookAt
+                        { eyePoint = position
+                        , focalPoint =
+                            position
+                                |> Point3d.translateIn Direction3d.positiveX (Length.meters 1)
+                                |> Point3d.rotateAround Axis3d.z p
+                                |> Point3d.rotateAround Axis3d.y t
+                        , upDirection = Direction3d.positiveZ
+                        }
+                , verticalFieldOfView =
+                    if z > 0 then
+                        Angle.degrees (Angle.inDegrees fov / z)
+
+                    else
+                        fov
+                }
+
+        Framed frame z fov ->
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.lookAt
+                        { eyePoint = frame |> Frame3d.originPoint
+                        , focalPoint =
+                            frame
+                                |> Frame3d.originPoint
+                                |> Point3d.translateBy
+                                    (frame
+                                        |> Frame3d.xDirection
+                                        |> Vector3d.withLength (Length.meters 10)
+                                    )
+                        , upDirection = frame |> Frame3d.zDirection
+                        }
+                , verticalFieldOfView =
+                    if z > 0 then
+                        Angle.degrees (Angle.inDegrees fov / z)
+
+                    else
+                        fov
+                }
+
+
+withColor : Color -> Mesh ObjCoordinates { a | normals : () } -> Entity ObjCoordinates
+withColor color =
+    withMaterial { color = color, roughness = 0.4 }
+
+
+withMaterial : { color : Color, roughness : Number } -> Mesh ObjCoordinates { a | normals : () } -> Entity ObjCoordinates
+withMaterial { color, roughness } =
+    Scene3d.mesh (material color roughness)
+
+
+material color roughness =
+    Material.nonmetal
+        { baseColor = color
+        , roughness = roughness
+        }
+
+
+{-| Add a 3D shape to a Scene3D scene as an entity.
+-}
+entity : ObjLibrary -> Shape -> Entity ObjCoordinates
+entity objLibrary (Shape x y z rr rp ry s alpha _ mf form) =
+    renderForm objLibrary Nothing form
+        |> transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
+
+
+entityWithFont : Font -> ObjLibrary -> Shape -> Entity ObjCoordinates
+entityWithFont font objLibrary (Shape x y z rr rp ry s alpha _ mf form) =
+    renderForm objLibrary (Just font) form
+        |> transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
+
+
+renderForm : ObjLibrary -> Maybe Font -> Form -> Entity ObjCoordinates
+renderForm objLibrary font form =
+    case form of
+        Group shapes ->
+            renderGroup font objLibrary shapes
+
+        Circle color radius ->
+            renderCircle color radius
+
+        Cylinder color radius height ->
+            renderCylinder { color = color, roughness = 0.4 } radius height
+
+        Cone color radius height ->
+            renderCone { color = color, roughness = 0.4 } radius height
+
+        Triangle color size ->
+            renderTriangle color size
+
+        Square color size ->
+            renderRectangle color size size
+
+        Rectangle color width height ->
+            renderRectangle color width height
+
+        Polygon color points ->
+            renderPolygon color points
+
+        Snake color points ->
+            renderSnake color points
+
+        Sphere color radius ->
+            renderSphere { color = color, roughness = 0.4 } radius
+
+        Cube color size ->
+            renderBlock { color = color, roughness = 0.4 } size size size
+
+        Block color width height depth ->
+            renderBlock { color = color, roughness = 0.4 } width height depth
+
+        Prism color size height ->
+            renderPrism color size height
+
+        Wall color height points ->
+            renderWall color height points
+
+        Words color string ->
+            case font of
+                Nothing ->
+                    renderGroup Nothing objLibrary []
+
+                Just f ->
+                    renderWords f color string
+
+        Object color vertices faces ->
+            renderObject color vertices faces
+
+        Entity e ->
+            e
+
+        ExtrudedPolygon color height points ->
+            renderExtrudedPolygon color height points
+
+        ObjFile color url ->
+            renderObjFileFrom objLibrary color url
+
+
+
+-- RENDER GROUP
+
+
+renderGroup : Maybe Font -> ObjLibrary -> List Shape -> Entity ObjCoordinates
+renderGroup font objLibrary shapes =
+    case font of
+        Nothing ->
+            shapes
+                |> List.map (entity objLibrary)
+                |> Scene3d.group
+
+        Just f ->
+            shapes
+                |> List.map (entityWithFont f objLibrary)
+                |> Scene3d.group
+
+
+
+-- RENDER CIRCLE AND OVAL
+
+
+renderCircle : Color -> Number -> Entity ObjCoordinates
+renderCircle color radius =
+    Shape.circle (radius / 100)
+        |> withColor color
+
+
+renderCylinder : Material -> Number -> Number -> Entity ObjCoordinates
+renderCylinder { color, roughness } radius height =
+    Cylinder3d.centeredOn Point3d.origin
+        Direction3d.z
+        { radius = Length.centimeters radius
+        , length = Length.centimeters height
+        }
+        |> Scene3d.cylinder (material color roughness)
+
+
+renderCone : Material -> Number -> Number -> Entity ObjCoordinates
+renderCone { color, roughness } radius height =
+    Cone3d.along Axis3d.z
+        { base = Length.centimeters 0
+        , tip = Length.centimeters height
+        , radius = Length.centimeters radius
+        }
+        |> Scene3d.cone (material color roughness)
+
+
+renderTriangle : Color -> Number -> Entity ObjCoordinates
+renderTriangle color s =
+    Shape.triangle (s / 100)
+        |> withColor color
+
+
+
+-- RENDER RECTANGLE AND IMAGE
+
+
+renderRectangle : Color -> Number -> Number -> Entity ObjCoordinates
+renderRectangle color w h =
+    Shape.rectangle (w / 100) (h / 100)
+        |> withColor color
+
+
+
+-- RENDER POLYGON
+
+
+renderPolygon : Color -> List ( Number, Number ) -> Entity ObjCoordinates
+renderPolygon color points =
+    triangulatePolygon points
+        |> List.map
+            (\( p1, p2, p3 ) ->
+                ( Point3d.centimeters (Tuple.first p1) (Tuple.second p1) 0
+                , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) 0
+                , Point3d.centimeters (Tuple.first p3) (Tuple.second p3) 0
+                )
+            )
+        |> TriangularMesh.triangles
+        |> Scene3d.Mesh.indexedFacets
+        |> Scene3d.Mesh.cullBackFaces
+        |> Scene3d.mesh (Material.color color)
+
+
+
+-- Helper functions for triangulation
+
+
+type alias EarResult =
+    { p1 : ( Number, Number )
+    , p2 : ( Number, Number )
+    , p3 : ( Number, Number )
+    , remaining : List ( Number, Number )
+    }
+
+
+type alias Triple =
+    { p1 : ( Number, Number )
+    , p2 : ( Number, Number )
+    , p3 : ( Number, Number )
+    }
+
+
+triangulatePolygon : List ( Number, Number ) -> List ( ( Number, Number ), ( Number, Number ), ( Number, Number ) )
+triangulatePolygon points =
+    case points of
+        [] ->
+            []
+
+        [ _ ] ->
+            []
+
+        [ _, _ ] ->
+            []
+
+        _ ->
+            if isPolygonClockwise points then
+                List.reverse points |> earClip [] |> List.reverse
+
+            else
+                earClip [] points
+
+
+earClip : List ( ( Number, Number ), ( Number, Number ), ( Number, Number ) ) -> List ( Number, Number ) -> List ( ( Number, Number ), ( Number, Number ), ( Number, Number ) )
+earClip triangles points =
+    if List.length points < 3 then
+        triangles
+
+    else
+        case findEar points of
+            Just result ->
+                earClip (( result.p1, result.p2, result.p3 ) :: triangles) result.remaining
+
+            Nothing ->
+                triangles
+
+
+findEar : List ( Number, Number ) -> Maybe EarResult
+findEar points =
+    let
+        len =
+            List.length points
+
+        -- Helper function to get three consecutive points
+        getTriple : Int -> { triple : Triple, remaining : List ( Number, Number ) }
+        getTriple i =
+            let
+                p1 =
+                    Maybe.withDefault ( 0, 0 ) (List.head (List.drop i points))
+
+                p2 =
+                    Maybe.withDefault ( 0, 0 ) (List.head (List.drop ((i + 1) |> modBy len) points))
+
+                p3 =
+                    Maybe.withDefault ( 0, 0 ) (List.head (List.drop ((i + 2) |> modBy len) points))
+
+                remaining =
+                    if i == len - 1 then
+                        -- Als we bij het laatste punt zijn, verwijder het eerste punt
+                        List.drop 1 points
+
+                    else if i == len - 2 then
+                        -- Als we bij het voorlaatste punt zijn, verwijder het laatste punt
+                        List.take (len - 1) points
+
+                    else
+                        -- Anders, verwijder het middelste punt
+                        List.take (i + 1) points ++ List.drop (i + 2) points
+            in
+            { triple = { p1 = p1, p2 = p2, p3 = p3 }
+            , remaining = remaining
+            }
+    in
+    List.range 0 (len - 1)
+        |> List.map getTriple
+        |> List.filter (\{ triple } -> isEar triple points)
+        |> List.head
+        |> Maybe.map
+            (\{ triple, remaining } ->
+                { p1 = triple.p1
+                , p2 = triple.p2
+                , p3 = triple.p3
+                , remaining = remaining
+                }
+            )
+
+
+isPolygonClockwise : List ( Number, Number ) -> Bool
+isPolygonClockwise points =
+    let
+        -- Calculate the signed area of the polygon
+        signedArea =
+            List.map2 (\( x1, y1 ) ( x2, y2 ) -> (x2 - x1) * (y2 + y1))
+                points
+                (List.drop 1 points ++ List.take 1 points)
+                |> List.sum
+    in
+    signedArea > 0
+
+
+isCounterClockwise : ( Number, Number ) -> ( Number, Number ) -> ( Number, Number ) -> Bool
+isCounterClockwise ( x1, y1 ) ( x2, y2 ) ( x3, y3 ) =
+    let
+        -- Calculate the signed area of the triangle
+        signedArea =
+            (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)
+    in
+    signedArea > 0
+
+
+pointInTriangle : ( Number, Number ) -> ( ( Number, Number ), ( Number, Number ), ( Number, Number ) ) -> Bool
+pointInTriangle ( px, py ) ( ( x1, y1 ), ( x2, y2 ), ( x3, y3 ) ) =
+    let
+        -- Use barycentric coordinates with epsilon for numerical stability
+        epsilon =
+            1.0e-10
+
+        denominator =
+            (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+
+        a =
+            ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / denominator
+
+        b =
+            ((y3 - y1) * (px - x3) + (x1 - x2) * (py - y3)) / denominator
+
+        c =
+            1 - a - b
+    in
+    a > -epsilon && b > -epsilon && c > -epsilon
+
+
+isEar : Triple -> List ( Number, Number ) -> Bool
+isEar triple points =
+    -- Check first whether the triangle is counter-clockwise
+    if not (isCounterClockwise triple.p1 triple.p2 triple.p3) then
+        False
+
+    else
+        -- Check whether no other points are in the triangle
+        points
+            |> List.filter
+                (\p ->
+                    p
+                        /= triple.p1
+                        && p
+                        /= triple.p2
+                        && p
+                        /= triple.p3
+                )
+            |> List.all (\p -> not (pointInTriangle p ( triple.p1, triple.p2, triple.p3 )))
+
+
+{-| ExtrudedPolygon rendering implementation
+-}
+renderExtrudedPolygon : Color -> Number -> List ( Number, Number ) -> Entity ObjCoordinates
+renderExtrudedPolygon color height points =
+    let
+        bottomVertices =
+            points
+                |> List.map (\( x, y ) -> Point3d.centimeters x y (-height / 2))
+                |> Array.fromList
+
+        topVertices =
+            points
+                |> List.map (\( x, y ) -> Point3d.centimeters x y (height / 2))
+                |> Array.fromList
+
+        numPoints =
+            List.length points
+
+        sideIndices =
+            List.range 0 (numPoints - 1)
+                |> List.map
+                    (\i ->
+                        let
+                            nextI =
+                                if i == numPoints - 1 then
+                                    0
+
+                                else
+                                    i + 1
+                        in
+                        [ ( i, nextI, nextI + numPoints )
+                        , ( i, nextI + numPoints, i + numPoints )
+                        ]
+                    )
+                |> List.concat
+
+        sideVertices =
+            Array.append bottomVertices topVertices
+
+        sideMesh =
+            TriangularMesh.indexed sideVertices sideIndices
+                |> Scene3d.Mesh.indexedFacets
+
+        -- |> Scene3d.Mesh.cullBackFaces
+        triangulatedFaces =
+            triangulatePolygon points
+
+        bottomFaces =
+            triangulatedFaces
+                |> List.map
+                    (\( p1, p2, p3 ) ->
+                        ( Point3d.centimeters (Tuple.first p1) (Tuple.second p1) (-height / 2)
+                        , Point3d.centimeters (Tuple.first p3) (Tuple.second p3) (-height / 2)
+                        , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) (-height / 2)
+                        )
+                    )
+                |> TriangularMesh.triangles
+                |> Scene3d.Mesh.indexedFacets
+                |> Scene3d.Mesh.cullBackFaces
+
+        topFaces =
+            triangulatedFaces
+                |> List.map
+                    (\( p1, p2, p3 ) ->
+                        ( Point3d.centimeters (Tuple.first p1) (Tuple.second p1) (height / 2)
+                        , Point3d.centimeters (Tuple.first p2) (Tuple.second p2) (height / 2)
+                        , Point3d.centimeters (Tuple.first p3) (Tuple.second p3) (height / 2)
+                        )
+                    )
+                |> TriangularMesh.triangles
+                |> Scene3d.Mesh.indexedFacets
+                |> Scene3d.Mesh.cullBackFaces
+    in
+    Scene3d.group
+        [ Scene3d.mesh (material color 0.4) bottomFaces
+        , Scene3d.mesh (material color 0.4) topFaces
+        , Scene3d.mesh (material color 0.4) sideMesh
+        ]
+
+
+addPoint : ( Float, Float ) -> String -> String
+addPoint ( x, y ) str =
+    str ++ String.fromFloat x ++ "," ++ String.fromFloat -y ++ " "
+
+
+
+-- RENDER OBJ FILE
+
+
+renderObjFileFrom library color url =
+    case Dict.get url library of
+        Just (ObjLoaded ( meshes, _ )) ->
+            renderMeshes meshes color
+
+        _ ->
+            Scene3d.group []
+
+
+renderMeshes : List MeshWithMaterial -> Color -> Entity ObjCoordinates
+renderMeshes meshes color =
+    let
+        entities =
+            meshes
+                |> List.map renderEntity
+
+        renderEntity ( materialName, m ) =
+            case m of
+                TexturedMesh texturedMesh ->
+                    Scene3d.mesh (Material.matte color) texturedMesh
+
+                UniformMesh uniformMesh ->
+                    let
+                        c =
+                            case materialName of
+                                "Black" ->
+                                    Color.black
+
+                                "Blue" ->
+                                    Color.blue
+
+                                "Green" ->
+                                    Color.green
+
+                                _ ->
+                                    color
+                    in
+                    Scene3d.mesh (Material.nonmetal { baseColor = c, roughness = 0.2 }) uniformMesh
+    in
+    Scene3d.group entities
+
+
+
+-- RENDER SPHERE
+
+
+renderSphere : Material -> Number -> Entity ObjCoordinates
+renderSphere { color, roughness } radius =
+    Sphere3d.withRadius (Length.centimeters radius) Point3d.origin
+        |> Scene3d.sphere (material color roughness)
+
+
+
+-- RENDER BLOCK
+
+
+renderBlock : Material -> Number -> Number -> Number -> Entity ObjCoordinates
+renderBlock { color, roughness } w h d =
+    let
+        rw =
+            w / 2
+
+        rh =
+            h / 2
+
+        rd =
+            d / 2
+    in
+    Block3d.with
+        { x1 = Length.centimeters -rw
+        , x2 = Length.centimeters rw
+        , y1 = Length.centimeters -rh
+        , y2 = Length.centimeters rh
+        , z1 = Length.centimeters -rd
+        , z2 = Length.centimeters rd
+        }
+        |> Scene3d.block (material color roughness)
+
+
+
+-- RENDER SNAKE
+
+
+renderSnake : Color -> List ( Number, Number, Number ) -> Entity ObjCoordinates
+renderSnake color points =
+    points
+        |> List.map (\( x, y, z ) -> Point3d.centimeters x y z)
+        |> Polyline3d.fromVertices
+        |> Scene3d.Mesh.polyline
+        |> Scene3d.mesh (Material.color color)
+
+
+
+-- RENDER PRISM
+
+
+renderPrism : Color -> Number -> Number -> Entity ObjCoordinates
+renderPrism color size height =
+    Scene3d.Mesh.indexedFacets (prismMesh size height)
+        |> Scene3d.Mesh.cullBackFaces
+        |> withColor color
+
+
+prismMesh size height =
+    let
+        s =
+            size / 100
+
+        hh =
+            0.5 * height / 100
+
+        negativeZVector =
+            Direction3d.negativeZ |> Direction3d.toVector
+
+        positiveZVector =
+            Direction3d.positiveZ |> Direction3d.toVector
+
+        p1 =
+            Point3d.unsafe { x = 0, y = s, z = -hh }
+
+        p2 =
+            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = -hh }
+
+        p3 =
+            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = -hh }
+
+        p4 =
+            Point3d.unsafe { x = 0, y = s, z = hh }
+
+        p5 =
+            Point3d.unsafe { x = s * sin (2 / 3 * pi), y = s * cos (2 / 3 * pi), z = hh }
+
+        p6 =
+            Point3d.unsafe { x = s * sin (4 / 3 * pi), y = s * cos (4 / 3 * pi), z = hh }
+
+        triangleBottom =
+            [ ( 0, 1, 2 ) ]
+
+        triangleTop =
+            [ ( 5, 4, 3 ) ]
+
+        side1 =
+            [ ( 1, 0, 4 ), ( 0, 3, 4 ) ]
+
+        side2 =
+            [ ( 2, 1, 5 ), ( 1, 4, 5 ) ]
+
+        side3 =
+            [ ( 0, 2, 3 ), ( 2, 5, 3 ) ]
+    in
+    TriangularMesh.indexed (Array.fromList [ p1, p2, p3, p4, p5, p6 ])
+        (List.concat [ triangleTop, side1, side2, side3, triangleBottom ])
+
+
+
+-- RENDER WALL
+
+
+renderWall : Color -> Number -> List ( Number, Number, Number ) -> Entity ObjCoordinates
+renderWall color height points =
+    TriangularMesh.strip
+        (points
+            |> List.map (\( x, y, z ) -> Point3d.centimeters x y (z - height / 2))
+        )
+        (points
+            |> List.map (\( x, y, z ) -> Point3d.centimeters x y (z + height / 2))
+        )
+        |> Scene3d.Mesh.indexedFacets
+        |> withColor color
+
+
+
+-- RENDER OBJECT
+
+
+renderObject : Color -> List ( Number, Number, Number ) -> List ( Int, Int, Int ) -> Entity ObjCoordinates
+renderObject color vertices faces =
+    let
+        vertexToPoint ( x, y, z ) =
+            Point3d.centimeters x y z
+
+        faceNullBased : ( Int, Int, Int ) -> ( Int, Int, Int )
+        faceNullBased ( i, j, k ) =
+            ( i - 1, j - 1, k - 1 )
+    in
+    TriangularMesh.indexed (vertices |> List.map vertexToPoint |> Array.fromList) (faces |> List.map faceNullBased)
+        |> Scene3d.Mesh.indexedFacets
+        |> withColor color
+
+
+
+-- RENDER WORDS
+
+
+renderWords : Font -> Color -> String -> Entity ObjCoordinates
+renderWords font color text =
+    Scene3d.Mesh.texturedFacets (mesh text)
+        |> Scene3d.mesh (Material.texturedColor font)
+
+
+mesh =
+    MogeeFont.text addLetter >> TriangularMesh.triangles
+
+
+type alias Vertex a =
+    { position : Point3d Meters a
+    , uv : ( Float, Float )
+    }
+
+
+addLetter : MogeeFont.Letter -> List ( Vertex a, Vertex a, Vertex a )
+addLetter { x, y, width, height, textureX, textureY } =
+    let
+        tscale ( tx, ty ) =
+            ( tx / 128, 1 - ty / 128 )
+    in
+    [ ( { position = Point3d.centimeters x y 0, uv = tscale ( textureX, textureY + height ) }
+      , { position = Point3d.centimeters (x + width) (y + height) 0, uv = tscale ( textureX + width, textureY ) }
+      , { position = Point3d.centimeters (x + width) y 0, uv = tscale ( textureX + width, textureY + height ) }
+      )
+    , ( { position = Point3d.centimeters x y 0, uv = tscale ( textureX, textureY + height ) }
+      , { position = Point3d.centimeters x (y + height) 0, uv = tscale ( textureX, textureY ) }
+      , { position = Point3d.centimeters (x + width) (y + height) 0, uv = tscale ( textureX + width, textureY ) }
+      )
+    ]
+
+
+
+-- RENDER TRANSFORMS
+
+
+type alias Translation =
+    { x : Number
+    , y : Number
+    , z : Number
+    }
+
+
+type alias Rotation =
+    { x : Number
+    , y : Number
+    , z : Number
+    }
+
+
+type alias Scale =
+    Number
+
+
+type alias Material =
+    { color : Color, roughness : Number }
+
+
+transformEntity : Translation -> Rotation -> Scale -> Maybe Physics -> Entity ObjCoordinates -> Entity ObjCoordinates
+transformEntity t r s physics =
+    case physics of
+        Nothing ->
+            Scene3d.rotateAround Axis3d.x (Angle.degrees r.x)
+                >> Scene3d.rotateAround Axis3d.y (Angle.degrees r.y)
+                >> Scene3d.rotateAround Axis3d.z (Angle.degrees r.z)
+                >> Scene3d.scaleAbout Point3d.origin s
+                >> Scene3d.translateBy (Vector3d.centimeters t.x t.y t.z)
+
+        Just { frame } ->
+            Scene3d.placeIn frame
+
+
+
+-- PHYSICS
+
+
+{-| Create an empty physics simulated world to add playground shapes to. Use it
+for example like this:
+
+    init =
+        { world =
+            emptyWorld
+                |> withGravity 9.81
+                |> withShapes
+                    [ square black 500
+                    ]
+                |> withDynamicShapes
+                    [ cylinder blue 50 100 |> move 100 100 100 |> withWeight (kilograms 10)
+                    , cube yellow 50 |> move 60 90 300
+                    , block red 50 50 100 |> move 100 -100 150
+                    , sphere green 50 |> move 70 80 400
+                    ]
+        }
+
+-}
+emptyWorld : World Shape
+emptyWorld =
+    World.empty
+
+
+{-| Add gravity (meters per second squared) to the simulated world.
+-}
+withGravity : Number -> World Shape -> World Shape
+withGravity acceleration =
+    World.withGravity (Acceleration.metersPerSecondSquared acceleration)
+        Direction3d.negativeZ
+
+
+{-| Add static shapes to the simulated world. They will stay where they are
+put.
+-}
+withShapes : List Shape -> World Shape -> World Shape
+withShapes shapes world =
+    shapes
+        |> List.foldl withShape world
+
+
+withShape : Shape -> World Shape -> World Shape
+withShape shape =
+    World.add (bodyFromShape shape)
+
+
+bodyFromShape : Shape -> Body Shape
+bodyFromShape ((Shape x y z rr rp ry s a n maybePhysics form) as shape) =
+    let
+        applyMaterial =
+            case maybePhysics of
+                Nothing ->
+                    identity
+
+                Just physics ->
+                    case ( physics.friction, physics.bounciness ) of
+                        ( Nothing, Nothing ) ->
+                            identity
+
+                        _ ->
+                            Body.withMaterial
+                                (Physics.Material.custom
+                                    { friction = physics.friction |> Maybe.withDefault 0.3
+                                    , bounciness = physics.bounciness |> Maybe.withDefault 0
+                                    }
+                                )
+
+        transformBody =
+            Body.rotateAround Axis3d.x (Angle.degrees rr)
+                >> Body.rotateAround Axis3d.y (Angle.degrees rp)
+                >> Body.rotateAround Axis3d.z (Angle.degrees ry)
+                >> Body.translateBy (Vector3d.centimeters x y z)
+                >> applyMaterial
+
+        blockBody w d h =
+            Body.block
+                (Block3d.centeredOn Frame3d.atOrigin
+                    ( Length.centimeters w
+                    , Length.centimeters d
+                    , Length.centimeters h
+                    )
+                )
+                shape
+                |> transformBody
+
+        cylinderBody radius height =
+            Body.cylinder
+                (Cylinder3d.centeredOn
+                    Point3d.origin
+                    Direction3d.z
+                    { radius = Length.centimeters (s * radius)
+                    , length = Length.centimeters (s * height)
+                    }
+                )
+                shape
+                |> transformBody
+
+        prismBody radius height =
+            shape
+                |> (prismMesh (s * radius) (s * height)
+                        |> Physics.unsafeConvex
+                        |> List.singleton
+                        |> Body.compound
+                   )
+                |> transformBody
+    in
+    case form of
+        Circle _ size ->
+            cylinderBody size 0.001
+
+        Triangle _ size ->
+            cylinderBody size 0.001
+
+        Square _ size ->
+            blockBody size size 0.001
+
+        Rectangle _ width depth ->
+            blockBody width depth 0.001
+
+        Sphere _ radius ->
+            Body.sphere (Sphere3d.atOrigin (Length.centimeters radius)) shape
+                |> transformBody
+
+        Cube _ size ->
+            blockBody size size size
+
+        Block _ width depth height ->
+            blockBody width depth height
+
+        Cylinder _ radius height ->
+            cylinderBody radius height
+
+        Prism _ radius height ->
+            prismBody radius height
+
+        Group shapes ->
+            shape
+                |> (shapes
+                        |> flattenGroup
+                        -- needed as compound does not support nested groups
+                        |> List.map geometryFromShape
+                        |> Body.compound
+                   )
+                |> transformBody
+
+        _ ->
+            let
+                ( w, d, h ) =
+                    extents shape
+            in
+            blockBody w d h
+
+
+flattenGroup shapes =
+    shapes
+        |> List.foldl flattenShape []
+
+
+flattenShape : Shape -> List Shape -> List Shape
+flattenShape ((Shape x y z rr rp ry s _ _ maybeFrame form) as shape) acc =
+    case form of
+        Group shapes ->
+            shapes
+                |> flattenGroup
+                |> List.map (move x y z >> roll rr >> pitch rp >> yaw ry >> scale s)
+                |> List.append acc
+
+        _ ->
+            shape :: acc
+
+
+geometryFromShape : Shape -> Physics.Shape
+geometryFromShape ((Shape x y z rr rp ry s a n maybeFrame form) as shape) =
+    let
+        blockShape w d h =
+            Block3d.centeredOn Frame3d.atOrigin
+                ( Length.centimeters (s * w)
+                , Length.centimeters (s * d)
+                , Length.centimeters (s * h)
+                )
+                |> Block3d.rotateAround Axis3d.x (Angle.degrees rr)
+                |> Block3d.rotateAround Axis3d.y (Angle.degrees rp)
+                |> Block3d.rotateAround Axis3d.z (Angle.degrees ry)
+                |> Block3d.translateBy (Vector3d.centimeters x y z)
+                |> Physics.block
+
+        cylinderShape size height =
+            Cylinder3d.centeredOn
+                Point3d.origin
+                Direction3d.z
+                { radius = Length.centimeters (s * size)
+                , length = Length.centimeters (s * height)
+                }
+                |> Cylinder3d.rotateAround Axis3d.x (Angle.degrees rr)
+                |> Cylinder3d.rotateAround Axis3d.y (Angle.degrees rp)
+                |> Cylinder3d.rotateAround Axis3d.z (Angle.degrees ry)
+                |> Cylinder3d.translateBy (Vector3d.centimeters x y z)
+                |> Physics.cylinder 12
+    in
+    case form of
+        Circle _ size ->
+            cylinderShape size 0.001
+
+        Triangle _ size ->
+            cylinderShape size 0.001
+
+        Square _ size ->
+            blockShape size size 0.001
+
+        Rectangle _ width depth ->
+            blockShape width depth 0.001
+
+        Sphere _ radius ->
+            Sphere3d.atOrigin (Length.centimeters (s * radius))
+                |> Sphere3d.translateBy (Vector3d.centimeters x y z)
+                |> Sphere3d.rotateAround Axis3d.x (Angle.degrees rr)
+                |> Sphere3d.rotateAround Axis3d.y (Angle.degrees rp)
+                |> Sphere3d.rotateAround Axis3d.z (Angle.degrees ry)
+                |> Physics.sphere
+
+        Cube _ size ->
+            blockShape size size size
+
+        Block _ width depth height ->
+            blockShape width depth height
+
+        Cylinder _ radius height ->
+            cylinderShape radius height
+
+        Prism _ radius height ->
+            cylinderShape radius height
+
+        _ ->
+            let
+                ( w, d, h ) =
+                    extents shape
+            in
+            blockShape w d h
+
+
+{-| Add dynamic shapes to the simulated world. These shapes will have weight.
+They are subject to gravity and other forces.
+-}
+withDynamicShapes : List Shape -> World Shape -> World Shape
+withDynamicShapes shapes world =
+    shapes
+        |> List.foldl withDynamicShape world
+
+
+withDynamicShape : Shape -> World Shape -> World Shape
+withDynamicShape shape =
+    World.add
+        (bodyFromShape shape
+            |> Body.withBehavior (Body.dynamic (weightOf shape))
+        )
+
+
+{-| Return the set amount of friction for the given shape. If not set this
+value is 0.3, the physics calculations default.
+-}
+frictionOf : Shape -> Number
+frictionOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .friction
+        |> Maybe.withDefault 0.3
+
+
+{-| Set the amount of friction for a shape. The default friction is 0.3.
+-}
+withFriction : Number -> Shape -> Shape
+withFriction amount (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | friction = Just amount
+                    }
+
+                Just phys ->
+                    { phys
+                        | friction = Just amount
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+{-| Return the set amount of bounciness for the given shape. If not set this
+value is 0, the physics calculations default.
+-}
+bouncinessOf : Shape -> Number
+bouncinessOf (Shape _ _ _ _ _ _ _ _ _ maybePhysics _) =
+    maybePhysics
+        |> Maybe.andThen .bounciness
+        |> Maybe.withDefault 0
+
+
+{-| Set the amount of bounciness for a shape. The default bounciness is 0.
+-}
+withBounciness : Number -> Shape -> Shape
+withBounciness amount (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | bounciness = Just amount
+                    }
+
+                Just phys ->
+                    { phys
+                        | bounciness = Just amount
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+{-| Set the weight (actually the mass) for a shape. For example:
+
+    cylinder blue 50 100 |> withWeight (kilograms 10)
+
+-}
+withWeight : Mass -> Shape -> Shape
+withWeight mass (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | mass = Just mass
+                    }
+
+                Just phys ->
+                    { phys
+                        | mass = Just mass
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+{-| Set the mass for a shape. For example:
+
+    cylinder blue 50 100 |> withMass (kilograms 10)
+
+-}
+withMass : Mass -> Shape -> Shape
+withMass mass (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | mass = Just mass
+                    }
+
+                Just phys ->
+                    { phys
+                        | mass = Just mass
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+{-| Specify mass (weight) in kilograms.
+-}
+kilograms : Number -> Mass
+kilograms =
+    Mass.kilograms
+
+
+{-| Specify mass (weight) in grams.
+-}
+grams : Number -> Mass
+grams =
+    Mass.grams
+
+
+{-| Return a mass (weight) in kilograms.
+-}
+inKilograms : Mass -> Number
+inKilograms =
+    Mass.inKilograms
+
+
+{-| Return a mass (weight) in grams.
+-}
+inGrams : Mass -> Number
+inGrams =
+    Mass.inGrams
+
+
+{-| Simulate the world. For use in the `update` function:
+
+    update computer memory =
+        { memory
+            | world = simulate memory.world
+        }
+
+-}
+simulate : World Shape -> World Shape
+simulate world =
+    world
+        |> World.constrain
+            (\b1 b2 ->
+                case ( Body.data b1, Body.data b2 ) of
+                    ( s1, (Shape _ _ _ _ _ _ _ _ _ (Just physics) _) as s2 ) ->
+                        physics.constraints
+                            |> List.filterMap (maybeApplyConstraint s1 s2)
+
+                    ( _, _ ) ->
+                        []
+            )
+        |> World.simulate (Duration.seconds (1 / 60))
+
+
+maybeApplyConstraint (Shape x1 y1 z1 rr1 rp1 ry1 _ _ n1 _ _) (Shape x2 y2 z2 rr2 rp2 ry2 _ _ n2 maybePhysics _) constraint =
+    if n1 == n2 then
+        Nothing
+
+    else
+        case constraint of
+            LockedPositionTo n ->
+                if n /= n1 then
+                    Nothing
+
+                else
+                    let
+                        attachmentPoint =
+                            Point3d.centimeters (x2 - x1) (y2 - y1) (z2 - z1)
+                    in
+                    Just (Physics.Constraint.pointToPoint attachmentPoint Point3d.origin)
+
+            FixedDistanceTo n ->
+                if n /= n1 then
+                    Nothing
+
+                else
+                    let
+                        length =
+                            Length.centimeters (sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2 + (z2 - z1) ^ 2))
+                    in
+                    Just (Physics.Constraint.distance length)
+
+            HingedTo n ->
+                if n /= n1 then
+                    Nothing
+
+                else
+                    let
+                        attachmentPoint =
+                            Point3d.centimeters (x2 - x1) (y2 - y1) (z2 - z1)
+
+                        axis1 =
+                            Axis3d.through attachmentPoint Direction3d.y
+                                |> Axis3d.rotateAround Axis3d.x (Angle.degrees rr1)
+                                |> Axis3d.rotateAround Axis3d.y (Angle.degrees rp1)
+                                |> Axis3d.rotateAround Axis3d.z (Angle.degrees ry1)
+
+                        axis2 =
+                            Axis3d.y
+                                |> Axis3d.rotateAround Axis3d.x (Angle.degrees rr2)
+                                |> Axis3d.rotateAround Axis3d.y (Angle.degrees rp2)
+                                |> Axis3d.rotateAround Axis3d.z (Angle.degrees ry2)
+                    in
+                    Just (Physics.Constraint.hinge axis1 axis2)
+
+
+{-| Simulate the world with a step of a specified duration.
+-}
+simulateFor : Duration -> World Shape -> World Shape
+simulateFor duration =
+    World.simulate duration
+
+
+{-| Get the shapes from the simulated world to be able to render them inside a
+view for example:
+
+    view computer memory =
+        shapesFromWorld memory.world
+
+-}
+shapesFromWorld : World Shape -> List Shape
+shapesFromWorld world =
+    world
+        |> World.bodies
+        |> List.map shapeFromBody
+
+
+shapeFromBody : Body Shape -> Shape
+shapeFromBody body =
+    let
+        (Shape x y z rr rp ry s a n physics form) =
+            Body.data body
+
+        constraints =
+            physics |> Maybe.map .constraints |> Maybe.withDefault []
+
+        frame =
+            Body.frame body
+
+        unsafeFrame =
+            Frame3d.unsafe
+                { originPoint = Frame3d.originPoint frame |> Point3d.unwrap |> Point3d.unsafe
+                , xDirection = Frame3d.xDirection frame |> Direction3d.unwrap |> Direction3d.unsafe
+                , yDirection = Frame3d.yDirection frame |> Direction3d.unwrap |> Direction3d.unsafe
+                , zDirection = Frame3d.zDirection frame |> Direction3d.unwrap |> Direction3d.unsafe
+                }
+    in
+    Shape x
+        y
+        z
+        rr
+        rp
+        ry
+        s
+        a
+        n
+        (Just
+            { frame = unsafeFrame
+            , mass = physics |> Maybe.andThen .mass
+            , constraints = constraints
+            , friction = physics |> Maybe.andThen .friction
+            , bounciness = physics |> Maybe.andThen .bounciness
+            }
+        )
+        form
+
+
+type Action
+    = Push Force (Direction3d Physics.Coordinates.BodyCoordinates) (Point3d Meters Physics.Coordinates.BodyCoordinates)
+    | MoveTo (Point3d Meters Physics.Coordinates.WorldCoordinates)
+    | MoveBy (Vector3d Meters Physics.Coordinates.WorldCoordinates)
+    | MoveIn (Direction3d Physics.Coordinates.BodyCoordinates) Length
+    | RotateAround (Axis3d Meters Physics.Coordinates.WorldCoordinates) Angle
+    | Transform (List (Shape -> Shape))
+
+
+{-| -}
+moveTo : Number -> Number -> Number -> Action
+moveTo x y z =
+    MoveTo (Point3d.centimeters x y z)
+
+
+{-| Move a shape that was added to the physics world by a specified
+translation relative to the world.
+-}
+moveBy : Vector3d Meters Physics.Coordinates.WorldCoordinates -> Action
+moveBy translation =
+    MoveBy translation
+
+
+{-| Move a shape that was added to the physics world in a specified
+direction relative to the shape.
+-}
+moveIn : Direction3d Physics.Coordinates.BodyCoordinates -> Length -> Action
+moveIn direction distance =
+    MoveIn direction distance
+
+
+{-| Move a shape that was added to the physics world forward along its
+x-axis (so it is relative to the current orientation of the shape).
+-}
+moveForward : Number -> Action
+moveForward distance =
+    MoveIn Direction3d.x (Length.centimeters distance)
+
+
+{-| Rotate a shape that was added to the physics world along a specified
+axis relative to the shape.
+-}
+rotateAround : Axis3d Meters Physics.Coordinates.WorldCoordinates -> Angle -> Action
+rotateAround axis angle =
+    RotateAround axis angle
+
+
+{-| Push a shape that was added to the physics world along a specified
+axis relative to the shape, with an amount of force (Newtons), at a
+specific point on the shape (specified relative to the shape).
+-}
+push : { force : Force, direction : Direction3d Physics.Coordinates.BodyCoordinates, at : Point3d Meters Physics.Coordinates.BodyCoordinates } -> Action
+push { force, direction, at } =
+    Push force direction at
+
+
+{-| Push a shape that was added to the physics world forward (in the
+direction of the x-axis of the shape).
+-}
+pushForward : Number -> Action
+pushForward f =
+    Push (Force.newtons f) Direction3d.x Point3d.origin
+
+
+{-| Push a shape that was added to the physics world backward (in the
+opposite direction of the x-axis of the shape).
+-}
+pushBackward : Number -> Action
+pushBackward f =
+    Push (Force.newtons f) Direction3d.negativeX Point3d.origin
+
+
+{-| Push a shape that was added to the physics world the left (in the
+opposite direction of the y-axis of the shape).
+-}
+pushLeft : Number -> Action
+pushLeft f =
+    Push (Force.newtons f) Direction3d.negativeY Point3d.origin
+
+
+{-| Push a shape that was added to the physics world to the right (in the
+direction of the y-axis of the shape).
+-}
+pushRight : Number -> Action
+pushRight f =
+    Push (Force.newtons f) Direction3d.y Point3d.origin
+
+
+{-| Push a shape that was added to the physics world up (in the
+direction of the z-axis of the shape).
+-}
+pushUp : Number -> Action
+pushUp f =
+    Push (Force.newtons f) Direction3d.z Point3d.origin
+
+
+{-| Push a shape that was added to the physics world down (in the
+opposite direction of the z-axis of the shape).
+-}
+pushDown : Number -> Action
+pushDown f =
+    Push (Force.newtons f) Direction3d.negativeZ Point3d.origin
+
+
+{-| Transform a shape that was added to the physics world using the familiar
+transforms of the playground, such as `roll`, `pitch`, `yaw`, `move` and
+`scale`.
+-}
+transform : List (Shape -> Shape) -> Action
+transform transforms =
+    Transform transforms
+
+
+{-| Update the shapes added to the physics world using actions such as
+`pushForward`.
+-}
+updateWorldShapes : (Shape -> List Action) -> World Shape -> World Shape
+updateWorldShapes shapeToActions world =
+    world
+        |> World.update
+            (\body ->
+                shapeToActions (Body.data body)
+                    |> List.foldl (\action acc -> applyAction action acc) body
+            )
+
+
+{-| Update the shape(s) with the specified name using actions such as
+`pushForward` and `transform`.
+-}
+updateShapeNamed : String -> List Action -> World Shape -> World Shape
+updateShapeNamed name actions world =
+    world
+        |> World.update
+            (\body ->
+                if nameOf (Body.data body) == name then
+                    actions
+                        |> List.foldl (\action acc -> applyAction action acc) body
+
+                else
+                    body
+            )
+
+
+applyAction : Action -> Body Shape -> Body Shape
+applyAction action body =
+    case action of
+        Push q d p ->
+            body
+                |> Body.applyForce q
+                    (Direction3d.placeIn (Body.frame body) d)
+                    (Point3d.placeIn (Body.frame body) p)
+
+        MoveTo position ->
+            Body.moveTo position body
+
+        MoveBy translation ->
+            Body.translateBy translation body
+
+        MoveIn direction distance ->
+            body
+                |> Body.translateBy
+                    (direction
+                        |> Vector3d.withLength distance
+                        |> Vector3d.placeIn (Body.frame body)
+                    )
+
+        RotateAround axis angle ->
+            Body.rotateAround axis angle body
+
+        Transform tfs ->
+            let
+                (Shape x y z rr rp ry s _ _ _ _) =
+                    tfs
+                        |> List.foldl (\tf shape -> tf shape) (cube black 1)
+            in
+            body
+                |> Body.rotateAround (Axis3d.placeIn (Body.frame body) Axis3d.x) (Angle.degrees rr)
+                |> Body.rotateAround (Axis3d.placeIn (Body.frame body) Axis3d.y) (Angle.degrees rp)
+                |> Body.rotateAround (Axis3d.placeIn (Body.frame body) Axis3d.z) (Angle.degrees ry)
+                |> Body.translateBy (Vector3d.centimeters x y z)
+
+
+{-| Search the world for a shape with the specified name. Return `Nothing` if
+no shape is found, and `Just shape` when it was found. It returns only the
+first shape found.
+-}
+shapeNamed : String -> World Shape -> Maybe Shape
+shapeNamed name world =
+    world
+        |> World.keepIf (Body.data >> nameOf >> (==) name)
+        |> World.bodies
+        |> List.head
+        |> Maybe.map shapeFromBody
+
+
+{-| Return a camera with the location and orientation of the specified shape.
+As if the shape would be the eyes! 8)
+-}
+viewFrom : Shape -> Camera
+viewFrom (Shape x y z rr rp ry _ _ _ physics _) =
+    case physics of
+        Nothing ->
+            { mode =
+                Framed
+                    (Frame3d.atOrigin
+                        |> Frame3d.rotateAround Axis3d.x (Angle.degrees rr)
+                        |> Frame3d.rotateAround Axis3d.y (Angle.degrees rp)
+                        |> Frame3d.rotateAround Axis3d.z (Angle.degrees ry)
+                        |> Frame3d.translateBy (Vector3d.centimeters x y z)
+                    )
+                    1
+                    (Angle.degrees 40)
+            , target = Nothing
+            }
+
+        Just { frame } ->
+            { mode = Framed frame 1 (Angle.degrees 40)
+            , target = Nothing
+            }
+
+
+connect : Constraint -> Shape -> Shape
+connect constraint (Shape x y z rr rp ry s a n maybePhysics form) =
+    let
+        physics =
+            case maybePhysics of
+                Nothing ->
+                    { defaultPhysics
+                        | constraints = [ constraint ]
+                    }
+
+                Just p ->
+                    { p
+                        | constraints = constraint :: p.constraints
+                    }
+    in
+    Shape x y z rr rp ry s a n (Just physics) form
+
+
+defaultPhysics =
+    { frame = Frame3d.atOrigin
+    , constraints = []
+    , mass = Nothing
+    , friction = Nothing
+    , bounciness = Nothing
+    }
+
+
+{-| Connect a shape to another shape with the specified name via a constraint
+that keeps the position of the shape relative to the named shape fixed.
+-}
+lockPositionTo : String -> Shape -> Shape
+lockPositionTo shapeName =
+    connect (LockedPositionTo shapeName)
+
+
+{-| Connect a shape to another shape with the specified name via a constraint
+that keeps the distance of the shape to the named shape fixed.
+-}
+keepDistanceTo : String -> Shape -> Shape
+keepDistanceTo shapeName =
+    connect (FixedDistanceTo shapeName)
+
+
+{-| Connect a shape to another shape with the specified name via a hinge
+constraint that keeps the relative positions and allows rotation along the
+y-axes of the shapes (relative to the individual shapes).
+-}
+hingeTo : String -> Shape -> Shape
+hingeTo shapeName =
+    connect (HingedTo shapeName)
