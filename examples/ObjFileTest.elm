@@ -1,6 +1,6 @@
 module ObjFileTest exposing (main)
 
-import Eigenwijs.Playground3d.WithObjFiles exposing (..)
+import Eigenwijs.Playground3d.Experimental exposing (..)
 
 
 main =

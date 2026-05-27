@@ -1,4 +1,4 @@
-module Eigenwijs.Playground3d.WithObjFiles exposing
+module Eigenwijs.Playground3d.Experimental exposing
     ( picture, animation, game
     , Shape, circle, square, rectangle, triangle, polygon, snake
     , sphere, cylinder, cone, cube, block, prism, obj, objFile
@@ -14,7 +14,7 @@ module Eigenwijs.Playground3d.WithObjFiles exposing
     , white, lightGrey, grey, darkGrey, lightCharcoal, charcoal, darkCharcoal, black
     , lightGray, gray, darkGray
     , Number
-    , configuration, withCamera, withNetwork, withObjUrls
+    , configuration, withCamera, withObjUrls
     , configuredPicture, configuredAnimation, configuredGame
     , Configuration, Connection
     , isometric, orbit, viewFrom, eyesAt, lookAt, pan, tilt, shift, zoom
@@ -36,7 +36,7 @@ module Eigenwijs.Playground3d.WithObjFiles exposing
     , pictureInit, pictureView, pictureUpdate, pictureSubscriptions, Picture
     , animationInit, animationView, animationUpdate, animationSubscriptions, Animation, AnimationMsg
     , gameInit, gameView, gameUpdate, gameSubscriptions, Game, GameMsg
-    -- , withAudio
+    --TODO: withAudio, withNetwork
     )
 
 {-| **Beware that this is a project under heavy construction** - We are trying to
@@ -137,7 +137,7 @@ The following primitives work in a (slightly) different way:
 
 # Configurations
 
-@docs configuration, withCamera, withNetwork, withObjUrls
+@docs configuration, withCamera, withObjUrls
 @docs configuredPicture, configuredAnimation, configuredGame
 @docs Configuration, Connection
 
@@ -284,6 +284,9 @@ picture shapes =
         |> configuredPicture shapes
 
 
+{-| Configuration type to hold customizations for camera and keep
+a list of obj file urls to load at init.
+-}
 type alias Configuration memory =
     { camera : Maybe (memory -> Camera)
     , network : Maybe Connection
@@ -291,6 +294,29 @@ type alias Configuration memory =
     }
 
 
+{-| Use `configuration` to configure a picture, animation or game.
+
+    polytest =
+        "obj/polytest.obj.txt"
+
+    main =
+        configuration
+            |> withObjUrls [ polytest ]
+            |> configuredAnimation view
+
+    view time =
+        [ if spin 1 time > 180 then
+            objFile red polytest
+                |> scale 0.5
+                |> moveZ 100
+
+          else
+            cube green 100
+                |> moveZ 50
+        ]
+
+-}
+configuration : Configuration memory
 configuration =
     { camera = Nothing
     , network = Nothing
@@ -298,20 +324,44 @@ configuration =
     }
 
 
+{-| Configure the camera; a function that given the memory outputs a camera.
+
+    main =
+        configuration
+            |> withCamera camera
+            |> configuredGame view update init
+
+    camera memory =
+        eyesAt 500 500 500
+            |> lookAt 0 0 0
+
+-}
 withCamera : (memory -> Camera) -> Configuration memory -> Configuration memory
 withCamera cam config =
     { config
-        | camera = cam
+        | camera = Just cam
     }
 
 
 withNetwork : Connection -> Configuration memory -> Configuration memory
 withNetwork connection config =
     { config
-        | network = connection
+        | network = Just connection
     }
 
 
+{-| Configure the list of obj file urls (obj files hold 3d models made with
+tools like Blender or found online).
+
+    polytest =
+        "obj/polytest.obj.txt"
+
+    main =
+        configuration
+            |> withObjUrls [ polytest ]
+            |> configuredGame view update init
+
+-}
 withObjUrls : List String -> Configuration memory -> Configuration memory
 withObjUrls objUrls config =
     { config
@@ -319,16 +369,18 @@ withObjUrls objUrls config =
     }
 
 
+{-| Create a configured picture - see `configuration`.
+-}
 configuredPicture : List Shape -> Configuration memory -> Program () Picture Msg
 configuredPicture shapes config =
     let
         view screen =
             { title = "Playground"
-            , body = [ pictureView screen shapes config ]
+            , body = [ pictureView screen shapes ]
             }
     in
     Browser.document
-        { init = pictureInit shapes config
+        { init = pictureInit shapes
         , view = view
         , update = pictureUpdate shapes
         , subscriptions = pictureSubscriptions
@@ -360,7 +412,7 @@ type alias ObjWithMaterials =
 
 {-| Picture init function
 -}
-pictureInit : List Shape -> Configuration memory -> () -> ( Picture, Cmd Msg )
+pictureInit : List Shape -> () -> ( Picture, Cmd Msg )
 pictureInit shapes () =
     let
         model =
@@ -969,15 +1021,14 @@ animation viewFrame =
         |> configuredAnimation viewFrame
 
 
-{-| Create an animation, with optionally a custom camera, network connection
-and/or obj file url list
+{-| Create a configured animation - see `configuration`.
 -}
-configuredAnimation : (Time -> List Shape) -> Configuration memory -> Program () Animation Msg
+configuredAnimation : (Time -> List Shape) -> Configuration () -> Program () Animation Msg
 configuredAnimation viewFrame config =
     let
         view a =
             { title = "Playground"
-            , body = [ animationView a viewFrame config ]
+            , body = [ animationView a viewFrame ]
             }
 
         update msg model =
@@ -1009,18 +1060,18 @@ type Animation
 
 {-| Animation init
 -}
-animationInit : (Time -> List Shape) -> Configuration memory -> () -> ( Animation, Cmd Msg )
+animationInit : (Time -> List Shape) -> Configuration () -> () -> ( Animation, Cmd Msg )
 animationInit viewFrame config () =
     let
         objLoadCmds =
             case config.objUrls of
-                Nothing ->
+                [] ->
                     viewFrame beginOfTime
                         |> objFileUrlsFromShapes
                         |> List.map objRequest
 
-                Just objUrls ->
-                    objUrls
+                _ ->
+                    config.objUrls
                         |> List.map objRequest
     in
     ( Animation E.Visible Nothing initialObjLibrary (toScreen 600 600) (Time (Time.millisToPosix 0))
@@ -1169,21 +1220,24 @@ Notice that in the `update` we use information from the keyboard to update the
 
 -}
 game : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
-game =
+game viewMemory updateMemory initialMemory =
     configuration
-        |> configuredGame
+        |> configuredGame viewMemory updateMemory initialMemory
 
 
-configuredGame : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Progrma () (Game memory) Msg
-configuredGame =
-    gameWithCamera (always isometric)
-
-
-{-| Create a game using a specific camera for viewing the scene!
+{-| Create a configured game - see `configuration`.
 -}
-gameWithCamera : (memory -> Camera) -> (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
-gameWithCamera cam viewMemory updateMemory initialMemory =
+configuredGame : (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Configuration memory -> Program () (Game memory) Msg
+configuredGame viewMemory updateMemory initialMemory config =
     let
+        cam =
+            case config.camera of
+                Nothing ->
+                    always isometric
+
+                Just c ->
+                    c
+
         view model =
             { title = "Playground"
             , body = [ gameView cam viewMemory model ]
@@ -1197,11 +1251,20 @@ gameWithCamera cam viewMemory updateMemory initialMemory =
             )
     in
     Browser.document
-        { init = gameInit initialMemory
+        { init = gameInit initialMemory config
         , view = view
         , update = update
         , subscriptions = gameSubscriptions
         }
+
+
+{-| Create a game using a specific camera for viewing the scene!
+-}
+gameWithCamera : (memory -> Camera) -> (Computer -> memory -> List Shape) -> (Computer -> memory -> memory) -> memory -> Program () (Game memory) Msg
+gameWithCamera cam viewMemory updateMemory initialMemory =
+    configuration
+        |> withCamera cam
+        |> configuredGame viewMemory updateMemory initialMemory
 
 
 type alias WithMessages memory =
@@ -1337,12 +1400,18 @@ initialComputer =
 
 {-| Game init function
 -}
-gameInit : memory -> () -> ( Game memory, Cmd Msg )
-gameInit initialMemory () =
+gameInit : memory -> Configuration memory -> () -> ( Game memory, Cmd Msg )
+gameInit initialMemory config () =
+    let
+        objLoadCmds =
+            config.objUrls
+                |> List.map objRequest
+    in
     ( Game E.Visible Nothing initialObjLibrary initialMemory initialComputer
     , Cmd.batch
         [ Task.perform GotViewport Dom.getViewport
         , Task.attempt GotFont <| Material.load MogeeFont.spriteSrc
+        , Cmd.batch objLoadCmds
         ]
     )
 
@@ -2190,10 +2259,9 @@ obj color vertices faces =
     Shape 0 0 0 0 0 0 1 1 "" Nothing (Object color vertices faces)
 
 
-
-{- Use a .obj model by url. -}
-
-
+{-| Use an obj file model by url as a shape. You can create obj file models
+using tools like Blender or search for premade ones online.
+-}
 objFile : Color -> String -> Shape
 objFile color url =
     Shape 0 0 0 0 0 0 1 1 "" Nothing (ObjFile color url)
