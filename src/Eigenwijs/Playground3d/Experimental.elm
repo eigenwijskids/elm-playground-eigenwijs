@@ -6,6 +6,7 @@ module Eigenwijs.Playground3d.Experimental exposing
     , move, moveX, moveY, moveZ, moveAlong, moveAlongLoop
     , scale, rotate, roll, pitch, yaw, fade
     , group, extrude, pullUp, prerendered
+    , sound
     , Time, spin, wave, zigzag, beginOfTime, secondsBetween
     , Computer, Mouse, Screen, Keyboard, toX, toY, toXY
     , rgb, rgb255, red, orange, yellow, green, blue, purple, brown
@@ -93,6 +94,11 @@ The following primitives work in a (slightly) different way:
 # Groups, extrusion, optimization
 
 @docs group, extrude, pullUp, prerendered
+
+
+# Music and sound
+
+@docs sound
 
 
 # Time
@@ -2039,6 +2045,7 @@ type Form
     | Words Color String
     | Object Color (List ( Number, Number, Number )) (List ( Int, Int, Int ))
     | ObjFile Color String
+    | Sound String
     | Entity (Entity ObjCoordinates)
 
 
@@ -2319,8 +2326,13 @@ still want to animate its head:
 
 -}
 prerendered : ObjLibrary -> Shape -> Shape
-prerendered objLibrary =
-    entity objLibrary >> Entity >> Shape 0 0 0 0 0 0 1 1 "" Nothing
+prerendered objLibrary shape =
+    case entity objLibrary shape of
+        Nothing ->
+            shape
+
+        Just ent ->
+            Shape 0 0 0 0 0 0 1 1 "" Nothing (Entity ent)
 
 
 {-| Put shapes together so you can [`move`](#move) and [`rotate`](#rotate)
@@ -3229,6 +3241,9 @@ extent (Shape _ _ _ _ _ _ _ _ _ maybeFrame form) =
             -- TODO: calc extent - probably easy because of boundingbox
             0
 
+        _ ->
+            0
+
 
 {-| Calculates the extents per axis of any (group of) shape(s). Extent in this case
 means from the center of the object to its edge (a "radius"), so it can directly
@@ -3360,6 +3375,9 @@ extents (Shape _ _ _ _ _ _ _ _ _ maybeFrame form) =
             -- TODO: calc extent - probably easy because of boundingbox
             ( 0, 0, 0 )
 
+        _ ->
+            ( 0, 0, 0 )
+
 
 
 -- RENDER
@@ -3388,15 +3406,52 @@ render cam { screen, font, objFiles } shapes =
             , entities =
                 case font of
                     Nothing ->
-                        List.map (entity objFiles) shapes
+                        List.filterMap (entity objFiles) shapes
 
                     Just f ->
-                        List.map (entityWithFont f objFiles) shapes
+                        List.filterMap (entityWithFont f objFiles) shapes
             , shadows = False
             , upDirection = Direction3d.y
             , sunlightDirection = Direction3d.yz (Angle.degrees -120)
             }
+        , shapes
+            |> audioElements
+            |> Html.aside [ H.style "position" "fixed" ]
         ]
+
+
+{-| Add sound to your picture, animation or game!
+
+    main =
+        picture [ circle yellow 50, sound "https://example.com/sound.mp3" ]
+
+-}
+sound : String -> Shape
+sound url =
+    Shape 0 0 0 0 0 0 1 1 "" Nothing (Sound url)
+
+
+audioElements shapes =
+    case shapes of
+        [] ->
+            []
+
+        shape :: rest ->
+            audioElementsFor shape ++ audioElements rest
+
+
+audioElementsFor (Shape _ _ _ _ _ _ _ _ _ _ form) =
+    case form of
+        Sound url ->
+            [ Html.audio [ H.src url, H.autoplay True ] [] ]
+
+        Group shapes ->
+            shapes
+                |> List.map audioElementsFor
+                |> List.concat
+
+        _ ->
+            []
 
 
 camera cam =
@@ -3498,82 +3553,103 @@ material color roughness =
 
 {-| Add a 3D shape to a Scene3D scene as an entity.
 -}
-entity : ObjLibrary -> Shape -> Entity ObjCoordinates
+entity : ObjLibrary -> Shape -> Maybe (Entity ObjCoordinates)
 entity objLibrary (Shape x y z rr rp ry s alpha _ mf form) =
     renderForm objLibrary Nothing form
-        |> transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
+        |> Maybe.map (transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf)
 
 
-entityWithFont : Font -> ObjLibrary -> Shape -> Entity ObjCoordinates
+entityWithFont : Font -> ObjLibrary -> Shape -> Maybe (Entity ObjCoordinates)
 entityWithFont font objLibrary (Shape x y z rr rp ry s alpha _ mf form) =
     renderForm objLibrary (Just font) form
-        |> transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf
+        |> Maybe.map (transformEntity { x = x, y = y, z = z } { x = rr, y = rp, z = ry } s mf)
 
 
-renderForm : ObjLibrary -> Maybe Font -> Form -> Entity ObjCoordinates
+renderForm : ObjLibrary -> Maybe Font -> Form -> Maybe (Entity ObjCoordinates)
 renderForm objLibrary font form =
     case form of
         Group shapes ->
             renderGroup font objLibrary shapes
+                |> Just
 
         Circle color radius ->
             renderCircle color radius
+                |> Just
 
         Cylinder color radius height ->
             renderCylinder { color = color, roughness = 0.4 } radius height
+                |> Just
 
         Cone color radius height ->
             renderCone { color = color, roughness = 0.4 } radius height
+                |> Just
 
         Triangle color size ->
             renderTriangle color size
+                |> Just
 
         Square color size ->
             renderRectangle color size size
+                |> Just
 
         Rectangle color width height ->
             renderRectangle color width height
+                |> Just
 
         Polygon color points ->
             renderPolygon color points
+                |> Just
 
         Snake color points ->
             renderSnake color points
+                |> Just
 
         Sphere color radius ->
             renderSphere { color = color, roughness = 0.4 } radius
+                |> Just
 
         Cube color size ->
             renderBlock { color = color, roughness = 0.4 } size size size
+                |> Just
 
         Block color width height depth ->
             renderBlock { color = color, roughness = 0.4 } width height depth
+                |> Just
 
         Prism color size height ->
             renderPrism color size height
+                |> Just
 
         Wall color height points ->
             renderWall color height points
+                |> Just
 
         Words color string ->
             case font of
                 Nothing ->
-                    renderGroup Nothing objLibrary []
+                    Nothing
 
                 Just f ->
                     renderWords f color string
+                        |> Just
 
         Object color vertices faces ->
             renderObject color vertices faces
+                |> Just
 
         Entity e ->
-            e
+            Just e
 
         ExtrudedPolygon color height points ->
             renderExtrudedPolygon color height points
+                |> Just
 
         ObjFile color url ->
             renderObjFileFrom objLibrary color url
+                |> Just
+
+        Sound _ ->
+            Nothing
 
 
 
@@ -3585,12 +3661,12 @@ renderGroup font objLibrary shapes =
     case font of
         Nothing ->
             shapes
-                |> List.map (entity objLibrary)
+                |> List.filterMap (entity objLibrary)
                 |> Scene3d.group
 
         Just f ->
             shapes
-                |> List.map (entityWithFont f objLibrary)
+                |> List.filterMap (entityWithFont f objLibrary)
                 |> Scene3d.group
 
 

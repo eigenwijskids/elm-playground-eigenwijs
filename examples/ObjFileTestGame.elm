@@ -3,6 +3,10 @@ module ObjFileTestGame exposing (main)
 import Eigenwijs.Playground3d.Experimental exposing (..)
 
 
+music =
+    "https://icecast.omroep.nl/funx-latin-bb-mp3"
+
+
 polytest =
     "obj/polytest.obj.txt"
 
@@ -41,6 +45,11 @@ view { time } memory =
         cube green 100
             |> moveZ 50
     , square darkGrey 500
+    , if memory.music then
+        group [ sound music, cube red 50 ]
+
+      else
+        cube green 50
     ]
 
 
@@ -64,6 +73,15 @@ update computer model =
         | x = model.x + dx
         , y = model.y + dy
         , richting = model.richting - draai
+        , music =
+            if computer.keyboard.space then
+                True
+
+            else if computer.keyboard.enter then
+                False
+
+            else
+                model.music
     }
 
 
@@ -72,4 +90,5 @@ init =
     , y = 0
     , z = 0
     , richting = 0
+    , music = False
     }
