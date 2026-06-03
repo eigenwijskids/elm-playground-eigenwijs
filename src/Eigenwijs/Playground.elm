@@ -2,6 +2,7 @@ module Eigenwijs.Playground exposing
     ( picture, animation, game
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
     , lineBetween, line, svgPath
+    , sound
     , withOutline, withStroke, withFill
     , words, withFont
     , image
@@ -38,6 +39,11 @@ module Eigenwijs.Playground exposing
 
 @docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
 @docs lineBetween, line, svgPath
+
+
+# Sounds
+
+@docs sound
 
 
 # Style
@@ -1141,6 +1147,7 @@ type Form msg
     | SvgPath Color Outline String
     | Words Color Outline Font String
     | Group (List (Shape msg))
+    | Sound String
 
 
 type alias Font =
@@ -2410,6 +2417,9 @@ toPolygon2d (Shape x y rot sx sy o name f) =
         SvgPath _ _ _ ->
             Polygon2d.singleLoop []
 
+        Sound _ ->
+            Polygon2d.singleLoop []
+
 
 {-| Returns the position of a shape, as a pair (x, y).
 -}
@@ -2509,6 +2519,9 @@ extent (Shape _ _ _ _ _ _ _ form) =
             List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
 
         SvgPath _ _ segments ->
+            0
+
+        Sound _ ->
             0
 
 
@@ -2638,17 +2651,56 @@ render screen shapes =
         y =
             String.fromFloat screen.bottom
     in
-    svg
-        [ viewBox (x ++ " " ++ y ++ " " ++ w ++ " " ++ h)
-        , H.style "position" "absolute"
-        , H.style "top" "0"
-        , H.style "left" "0"
-        , H.style "width" "100%"
-        , H.style "height" "100%"
-        , width "100%"
-        , height "100%"
+    Html.div []
+        [ svg
+            [ viewBox (x ++ " " ++ y ++ " " ++ w ++ " " ++ h)
+            , H.style "position" "absolute"
+            , H.style "top" "0"
+            , H.style "left" "0"
+            , H.style "width" "100%"
+            , H.style "height" "100%"
+            , width "100%"
+            , height "100%"
+            ]
+            (List.filterMap renderShape shapes)
+        , shapes
+            |> audioElements
+            |> Html.aside [ H.style "position" "fixed" ]
         ]
-        (List.map renderShape shapes)
+
+
+{-| Add sound to your picture, animation or game!
+
+    main =
+        picture [ circle yellow 50, sound "https://example.com/sound.mp3" ]
+
+-}
+sound : String -> Shape msg
+sound url =
+    Shape 0 0 0 1 1 1 Nothing (Sound url)
+
+
+audioElements shapes =
+    case shapes of
+        [] ->
+            []
+
+        shape :: rest ->
+            audioElementsFor shape ++ audioElements rest
+
+
+audioElementsFor (Shape _ _ _ _ _ _ _ form) =
+    case form of
+        Sound url ->
+            [ Html.audio [ H.src url, H.autoplay True ] [] ]
+
+        Group shapes ->
+            shapes
+                |> List.map audioElementsFor
+                |> List.concat
+
+        _ ->
+            []
 
 
 
@@ -2656,36 +2708,48 @@ render screen shapes =
 --
 
 
-renderShape : Shape msg -> Svg msg
+renderShape : Shape msg -> Maybe (Svg msg)
 renderShape (Shape x y angle sx sy alpha msg form) =
     case form of
         Circle color outline radius ->
             renderCircle color outline radius x y angle sx sy alpha msg
+                |> Just
 
         Oval color outline width height ->
             renderOval color outline width height x y angle sx sy alpha msg
+                |> Just
 
         Rectangle color outline width height ->
             renderRectangle color outline width height x y angle sx sy alpha msg
+                |> Just
 
         Ngon color outline n radius ->
             renderNgon color outline n radius x y angle sx sy alpha msg
+                |> Just
 
         Polygon color outline points ->
             renderPolygon color outline points x y angle sx sy alpha msg
+                |> Just
 
         Image width height src ->
             renderImage width height src x y angle sx sy alpha msg
+                |> Just
 
         Words color outline font string ->
             renderWords color outline font string x y angle sx sy alpha msg
+                |> Just
 
         SvgPath color outline segments ->
             renderPath color outline segments x y angle sx sy alpha msg
+                |> Just
 
         Group shapes ->
             g (transform (renderTransform x y angle sx sy) :: renderAlpha alpha ++ renderOnClick msg)
-                (List.map renderShape shapes)
+                (List.filterMap renderShape shapes)
+                |> Just
+
+        Sound _ ->
+            Nothing
 
 
 
