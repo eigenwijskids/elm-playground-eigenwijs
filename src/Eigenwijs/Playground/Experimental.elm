@@ -3,7 +3,7 @@ module Eigenwijs.Playground.Experimental exposing
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
     , lineBetween, line, svgPath
     , sound
-    , withOutline, withStroke, withFill
+    , withOutline, withStroke, withFill, clip, only, cutTo
     , words, withFont
     , image
     , move, moveUp, moveDown, moveLeft, moveRight, moveX, moveY, moveAlong, moveAlongLoop
@@ -49,7 +49,7 @@ module Eigenwijs.Playground.Experimental exposing
 
 # Style
 
-@docs withOutline, withStroke, withFill
+@docs withOutline, withStroke, withFill, clip, only, cutTo
 
 
 # Words
@@ -1138,9 +1138,16 @@ type Shape msg
         -- scale height
         Number
         -- alpha
+        (List (Clipping msg))
+        -- clip shape
         (Maybe msg)
         -- message to send on click (to make the shape clickable and identifiable)
         (Form msg)
+
+
+type Clipping msg
+    = CutTo (List (Shape msg))
+    | CutAway (List (Shape msg))
 
 
 type Form msg
@@ -1169,28 +1176,28 @@ type Outline
 {-| Add an outline to shapes with specified color and thickness.
 -}
 withOutline : Color -> Float -> Shape msg -> Shape msg
-withOutline color thickness ((Shape x y a sx sy o n f) as shape) =
+withOutline color thickness ((Shape x y a sx sy o clp n f) as shape) =
     case f of
         Circle c _ r ->
-            Shape x y a sx sy o n (Circle c (Outline color thickness) r)
+            Shape x y a sx sy o clp n (Circle c (Outline color thickness) r)
 
         Oval c _ w h ->
-            Shape x y a sx sy o n (Oval c (Outline color thickness) w h)
+            Shape x y a sx sy o clp n (Oval c (Outline color thickness) w h)
 
         Rectangle c _ w h ->
-            Shape x y a sx sy o n (Rectangle c (Outline color thickness) w h)
+            Shape x y a sx sy o clp n (Rectangle c (Outline color thickness) w h)
 
         Ngon c _ i s ->
-            Shape x y a sx sy o n (Ngon c (Outline color thickness) i s)
+            Shape x y a sx sy o clp n (Ngon c (Outline color thickness) i s)
 
         Polygon c _ cs ->
-            Shape x y a sx sy o n (Polygon c (Outline color thickness) cs)
+            Shape x y a sx sy o clp n (Polygon c (Outline color thickness) cs)
 
         Words c _ ff t ->
-            Shape x y a sx sy o n (Words c (Outline color thickness) ff t)
+            Shape x y a sx sy o clp n (Words c (Outline color thickness) ff t)
 
         SvgPath c _ s ->
-            Shape x y a sx sy o n (SvgPath c (Outline color thickness) s)
+            Shape x y a sx sy o clp n (SvgPath c (Outline color thickness) s)
 
         _ ->
             shape
@@ -1207,31 +1214,71 @@ withStroke =
 to a line or svgPath shape.
 -}
 withFill : Color -> Shape msg -> Shape msg
-withFill color ((Shape x y a sx sy o n f) as shape) =
+withFill color ((Shape x y a sx sy o clp n f) as shape) =
     case f of
         Circle _ l r ->
-            Shape x y a sx sy o n (Circle color l r)
+            Shape x y a sx sy o clp n (Circle color l r)
 
         Oval _ l w h ->
-            Shape x y a sx sy o n (Oval color l w h)
+            Shape x y a sx sy o clp n (Oval color l w h)
 
         Rectangle _ l w h ->
-            Shape x y a sx sy o n (Rectangle color l w h)
+            Shape x y a sx sy o clp n (Rectangle color l w h)
 
         Ngon _ l i s ->
-            Shape x y a sx sy o n (Ngon color l i s)
+            Shape x y a sx sy o clp n (Ngon color l i s)
 
         Polygon _ l cs ->
-            Shape x y a sx sy o n (Polygon color l cs)
+            Shape x y a sx sy o clp n (Polygon color l cs)
 
         Words _ l ff t ->
-            Shape x y a sx sy o n (Words color l ff t)
+            Shape x y a sx sy o clp n (Words color l ff t)
 
         SvgPath _ l s ->
-            Shape x y a sx sy o n (SvgPath color l s)
+            Shape x y a sx sy o clp n (SvgPath color l s)
 
         _ ->
             shape
+
+
+{-| Clip a shape using another shape.
+
+    circle red 50
+        |> clip (rectangle 100 10)
+
+-}
+clip : List (Shape msg) -> Shape msg -> Shape msg
+clip clippingShapes (Shape x y a sx sy o clp n f) =
+    Shape x y a sx sy o (CutTo clippingShapes :: clp) n f
+
+
+{-| `only` is the same as clip and might read better (experimental).
+
+    circle red 50
+        |> only (rectangle 100 10)
+
+-}
+only : List (Shape msg) -> Shape msg -> Shape msg
+only =
+    clip
+
+
+{-| `cutTo` is the same as clip but might confuse less (experimental).
+
+    circle red 50
+        |> cutTo (rectangle 100 10)
+
+-}
+cutTo : List (Shape msg) -> Shape msg -> Shape msg
+cutTo =
+    clip
+
+
+
+-- TODO:
+-- without/cutAway
+-- though this is tricky:
+-- https://medium.com/@femion/3-ways-to-cut-svg-shapes-d24108aba4a3
 
 
 {-| Make circles:
@@ -1248,7 +1295,7 @@ the circle.
 -}
 circle : Color -> Number -> Shape msg
 circle color radius =
-    Shape 0 0 0 1 1 1 Nothing (Circle color NoOutline radius)
+    Shape 0 0 0 1 1 1 [] Nothing (Circle color NoOutline radius)
 
 
 {-| Make ovals:
@@ -1262,7 +1309,7 @@ is 200 pixels wide and 100 pixels tall.
 -}
 oval : Color -> Number -> Number -> Shape msg
 oval color width height =
-    Shape 0 0 0 1 1 1 Nothing (Oval color NoOutline width height)
+    Shape 0 0 0 1 1 1 [] Nothing (Oval color NoOutline width height)
 
 
 {-| Make squares. Here are two squares combined to look like an empty box:
@@ -1281,7 +1328,7 @@ be 80 pixels by 80 pixels.
 -}
 square : Color -> Number -> Shape msg
 square color n =
-    Shape 0 0 0 1 1 1 Nothing (Rectangle color NoOutline n n)
+    Shape 0 0 0 1 1 1 [] Nothing (Rectangle color NoOutline n n)
 
 
 {-| Make rectangles. This example makes a red cross:
@@ -1300,7 +1347,7 @@ part of the cross, the thinner and taller part.
 -}
 rectangle : Color -> Number -> Number -> Shape msg
 rectangle color width height =
-    Shape 0 0 0 1 1 1 Nothing (Rectangle color NoOutline width height)
+    Shape 0 0 0 1 1 1 [] Nothing (Rectangle color NoOutline width height)
 
 
 {-| Make triangles. So if you wanted to draw the Egyptian pyramids, you could
@@ -1319,7 +1366,7 @@ the pyramid is `200`. Pretty big!
 -}
 triangle : Color -> Number -> Shape msg
 triangle color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 3 radius)
+    Shape 0 0 0 1 1 1 [] Nothing (Ngon color NoOutline 3 radius)
 
 
 {-| Make pentagons:
@@ -1337,7 +1384,7 @@ of the five points is 100 pixels.
 -}
 pentagon : Color -> Number -> Shape msg
 pentagon color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 5 radius)
+    Shape 0 0 0 1 1 1 [] Nothing (Ngon color NoOutline 5 radius)
 
 
 {-| Make hexagons:
@@ -1357,7 +1404,7 @@ honeycomb pattern!
 -}
 hexagon : Color -> Number -> Shape msg
 hexagon color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 6 radius)
+    Shape 0 0 0 1 1 1 [] Nothing (Ngon color NoOutline 6 radius)
 
 
 {-| Make octogons:
@@ -1375,7 +1422,7 @@ from the center.
 -}
 octagon : Color -> Number -> Shape msg
 octagon color radius =
-    Shape 0 0 0 1 1 1 Nothing (Ngon color NoOutline 8 radius)
+    Shape 0 0 0 1 1 1 [] Nothing (Ngon color NoOutline 8 radius)
 
 
 {-| Make any shape you want! Here is a very thin triangle:
@@ -1394,7 +1441,7 @@ octagon color radius =
 -}
 polygon : Color -> List ( Number, Number ) -> Shape msg
 polygon color points =
-    Shape 0 0 0 1 1 1 Nothing (Polygon color NoOutline points)
+    Shape 0 0 0 1 1 1 [] Nothing (Polygon color NoOutline points)
 
 
 {-| Add some image from the internet:
@@ -1411,7 +1458,7 @@ You provide the width, height, and then the URL of the image you want to show.
 -}
 image : Number -> Number -> String -> Shape msg
 image w h src =
-    Shape 0 0 0 1 1 1 Nothing (Image w h src)
+    Shape 0 0 0 1 1 1 [] Nothing (Image w h src)
 
 
 {-| Show some words!
@@ -1428,7 +1475,7 @@ You can use [`scale`](#scale) to make the words bigger or smaller.
 -}
 words : Color -> String -> Shape msg
 words color string =
-    Shape 0 0 0 1 1 1 Nothing (Words color NoOutline Nothing string)
+    Shape 0 0 0 1 1 1 [] Nothing (Words color NoOutline Nothing string)
 
 
 {-| Put shapes together so you can [`move`](#move) and [`rotate`](#rotate)
@@ -1462,7 +1509,7 @@ them as a group. Maybe you want to put a bunch of stars in the sky:
 -}
 group : List (Shape msg) -> Shape msg
 group shapes =
-    Shape 0 0 0 1 1 1 Nothing (Group shapes)
+    Shape 0 0 0 1 1 1 [] Nothing (Group shapes)
 
 
 
@@ -1487,8 +1534,8 @@ group shapes =
 
 -}
 move : Number -> Number -> Shape msg -> Shape msg
-move dx dy (Shape x y a sx sy o n f) =
-    Shape (x + dx) (y + dy) a sx sy o n f
+move dx dy (Shape x y a sx sy o clp n f) =
+    Shape (x + dx) (y + dy) a sx sy o clp n f
 
 
 {-| Move a shape up by some number of pixels. So if you wanted to make a tree
@@ -1524,8 +1571,8 @@ above the ground, you could move the sky up and the ground down:
 
 -}
 moveDown : Number -> Shape msg -> Shape msg
-moveDown dy (Shape x y a sx sy o n f) =
-    Shape x (y - dy) a sx sy o n f
+moveDown dy (Shape x y a sx sy o clp n f) =
+    Shape x (y - dy) a sx sy o clp n f
 
 
 {-| Move shapes to the left.
@@ -1541,8 +1588,8 @@ moveDown dy (Shape x y a sx sy o n f) =
 
 -}
 moveLeft : Number -> Shape msg -> Shape msg
-moveLeft dx (Shape x y a sx sy o n f) =
-    Shape (x - dx) y a sx sy o n f
+moveLeft dx (Shape x y a sx sy o clp n f) =
+    Shape (x - dx) y a sx sy o clp n f
 
 
 {-| Move shapes to the right.
@@ -1579,8 +1626,8 @@ Using `moveX` feels a bit nicer here because the movement may be positive or neg
 
 -}
 moveX : Number -> Shape msg -> Shape msg
-moveX dx (Shape x y a sx sy o n f) =
-    Shape (x + dx) y a sx sy o n f
+moveX dx (Shape x y a sx sy o clp n f) =
+    Shape (x + dx) y a sx sy o clp n f
 
 
 {-| Move the `y` coordinate of a shape by some amount. Maybe you want to make
@@ -1604,8 +1651,8 @@ top of the screen, since the values are negative sometimes.
 
 -}
 moveY : Number -> Shape msg -> Shape msg
-moveY dy (Shape x y a sx sy o n f) =
-    Shape x (y + dy) a sx sy o n f
+moveY dy (Shape x y a sx sy o clp n f) =
+    Shape x (y + dy) a sx sy o clp n f
 
 
 {-| Move a shape along a path, specified by a list of coordinate-pairs,
@@ -1618,7 +1665,7 @@ So in the example below, the circle is moved halfway on the path:
 
 -}
 moveAlong : List ( Number, Number ) -> Number -> Shape msg -> Shape msg
-moveAlong coords amount ((Shape x y a sx sy o n f) as shape) =
+moveAlong coords amount ((Shape x y a sx sy o clp n f) as shape) =
     let
         totalLength =
             case coords of
@@ -1666,7 +1713,7 @@ moveAlong coords amount ((Shape x y a sx sy o n f) as shape) =
                             ( ( x1, y1 ), amount * totalLength )
                         |> Tuple.first
     in
-    Shape (x + nx) (y + ny) a sx sy o n f
+    Shape (x + nx) (y + ny) a sx sy o clp n f
 
 
 {-| Move a shape along a path, just like with moveAlong, but by adding the first
@@ -1704,8 +1751,8 @@ be larger, you could say:
 
 -}
 scale : Number -> Shape msg -> Shape msg
-scale ns (Shape x y a sx sy o n f) =
-    Shape x y a (sx * ns) (sy * ns) o n f
+scale ns (Shape x y a sx sy o clp n f) =
+    Shape x y a (sx * ns) (sy * ns) o clp n f
 
 
 {-| Make a shape's width bigger or smaller. So if you wanted a [`triangle`](#triangle) to
@@ -1721,8 +1768,8 @@ be wider, you could say:
 
 -}
 scaleX : Number -> Shape msg -> Shape msg
-scaleX ns (Shape x y a sx sy o n f) =
-    Shape x y a (sx * ns) sy o n f
+scaleX ns (Shape x y a sx sy o clp n f) =
+    Shape x y a (sx * ns) sy o clp n f
 
 
 {-| Make a shape's height bigger or smaller. So if you wanted a [`triangle`](#triangle) to
@@ -1738,8 +1785,8 @@ be taller, you could say:
 
 -}
 scaleY : Number -> Shape msg -> Shape msg
-scaleY ns (Shape x y a sx sy o n f) =
-    Shape x y a sx (sy * ns) o n f
+scaleY ns (Shape x y a sx sy o clp n f) =
+    Shape x y a sx (sy * ns) o clp n f
 
 
 {-| Rotate shapes in degrees.
@@ -1757,8 +1804,8 @@ The degrees go **counter-clockwise** to match the direction of the
 
 -}
 rotate : Number -> Shape msg -> Shape msg
-rotate da (Shape x y a sx sy o n f) =
-    Shape x y (a + da) sx sy o n f
+rotate da (Shape x y a sx sy o clp n f) =
+    Shape x y (a + da) sx sy o clp n f
 
 
 {-| Fade a shape. This lets you make shapes see-through or even completely
@@ -1780,8 +1827,8 @@ and `1` is completely solid.
 
 -}
 fade : Number -> Shape msg -> Shape msg
-fade o (Shape x y a sx sy _ n f) =
-    Shape x y a sx sy o n f
+fade o (Shape x y a sx sy _ clp n f) =
+    Shape x y a sx sy o clp n f
 
 
 {-| Name a shape. This lets you set a name for a shape, so you can detect when
@@ -1809,8 +1856,8 @@ it is clicked.
 
 -}
 withName : String -> Shape Msg -> Shape Msg
-withName n (Shape x y a sx sy o _ f) =
-    Shape x y a sx sy o (Just (ClickedName n)) f
+withName n (Shape x y a sx sy o clp _ f) =
+    Shape x y a sx sy o clp (Just (ClickedName n)) f
 
 
 {-| Return the name of a shape if it was given one.
@@ -1828,7 +1875,7 @@ withName n (Shape x y a sx sy o _ f) =
 
 -}
 nameOf : Shape Msg -> Maybe String
-nameOf (Shape _ _ _ _ _ _ maybeMessage _) =
+nameOf (Shape _ _ _ _ _ _ _ maybeMessage _) =
     case maybeMessage of
         Just (ClickedName name) ->
             Just name
@@ -1856,16 +1903,16 @@ clickedName n { clickedNames } =
 
 -}
 withFont : String -> Shape msg -> Shape msg
-withFont fontname ((Shape x y a sx sy o n f) as shape) =
+withFont fontname ((Shape x y a sx sy o clp n f) as shape) =
     case f of
         Words c outline _ w ->
-            Shape x y a sx sy o n (Words c outline (Just fontname) w)
+            Shape x y a sx sy o clp n (Words c outline (Just fontname) w)
 
         Group shapes ->
-            Shape x y a sx sy o n (Group (List.map (withFont fontname) shapes))
+            Shape x y a sx sy o clp n (Group (List.map (withFont fontname) shapes))
 
         _ ->
-            Shape x y a sx sy o n f
+            Shape x y a sx sy o clp n f
 
 
 
@@ -2278,14 +2325,14 @@ distanceFromCircle ( cx, cy ) cr { x, y, width, height, angle } =
 containsPoint : ( Number, Number ) -> Shape msg -> Bool
 containsPoint ( x, y ) shape =
     case shape of
-        Shape x_ y_ _ sx sy _ _ (Circle _ _ r) ->
+        Shape x_ y_ _ sx sy _ _ _ (Circle _ _ r) ->
             let
                 ( a, b ) =
                     ( sx * (x - x_), sy * (y - y_) )
             in
             sqrt (a ^ 2 + b ^ 2) <= r
 
-        Shape x_ y_ _ sx sy _ _ (Group shapes) ->
+        Shape x_ y_ _ sx sy _ _ _ (Group shapes) ->
             if sx == 0 || sy == 0 then
                 False
 
@@ -2313,7 +2360,7 @@ the shape. If the shape is circular, this returns an approximating polygon.
 verticesOf : Shape msg -> List ( Number, Number )
 verticesOf shape =
     case shape of
-        Shape x y r sx sy _ _ (Polygon _ _ points) ->
+        Shape x y r sx sy _ _ _ (Polygon _ _ points) ->
             points
                 |> List.map (transformCoordinates x y r sx sy)
 
@@ -2331,12 +2378,12 @@ basic shapes, as an alternative way definition; it is sometimes easier than
 enumerating all the points one by one as coordinate pairs.
 -}
 toPolygon : Color -> Shape msg -> Shape msg
-toPolygon color ((Shape _ _ _ _ _ o name _) as shape) =
+toPolygon color ((Shape _ _ _ _ _ o _ msg _) as shape) =
     toPolygon2d shape
         |> Polygon2d.vertices
         |> List.map (Point2d.unwrap >> (\{ x, y } -> ( x, y )))
         |> Polygon color NoOutline
-        |> Shape 0 0 0 1 1 o name
+        |> Shape 0 0 0 1 1 o [] msg
 
 
 {-| Convert an elm-geometry Polygon2d to a polygone Shape with specified color.
@@ -2347,11 +2394,11 @@ polygonFromPolygon2d color p2d =
         |> Polygon2d.vertices
         |> List.map (Point2d.unwrap >> (\{ x, y } -> ( x, y )))
         |> Polygon color NoOutline
-        |> Shape 0 0 0 1 1 1 Nothing
+        |> Shape 0 0 0 1 1 1 [] Nothing
 
 
 toPolygon2d : Shape msg -> Polygon2d Unitless coords
-toPolygon2d (Shape x y rot sx sy o name f) =
+toPolygon2d (Shape x y rot sx sy o clp name f) =
     let
         transform =
             Polygon2d.translateBy (Vector2d.unitless x y)
@@ -2360,7 +2407,7 @@ toPolygon2d (Shape x y rot sx sy o name f) =
     case f of
         -- Crude octagonal approximation
         Circle color outline r ->
-            toPolygon2d (Shape x y rot sx sy o name (Ngon color outline 8 r))
+            toPolygon2d (Shape x y rot sx sy o clp name (Ngon color outline 8 r))
 
         -- Crude single-axis scaled octagonal approximation
         Oval color outline w h ->
@@ -2374,7 +2421,7 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                             h / w
                           )
             in
-            toPolygon2d (Shape x y rot sx sy_ o name (Ngon color outline 8 (w / 2)))
+            toPolygon2d (Shape x y rot sx sy_ o clp name (Ngon color outline 8 (w / 2)))
 
         Rectangle _ _ w h ->
             let
@@ -2410,7 +2457,7 @@ toPolygon2d (Shape x y rot sx sy o name f) =
                 |> transform
 
         Image w h _ ->
-            toPolygon2d (Shape x y rot sx sy o name (Rectangle white NoOutline w h))
+            toPolygon2d (Shape x y rot sx sy o clp name (Rectangle white NoOutline w h))
 
         Words _ _ _ _ ->
             Polygon2d.singleLoop []
@@ -2434,33 +2481,33 @@ toPolygon2d (Shape x y rot sx sy o name f) =
 {-| Returns the position of a shape, as a pair (x, y).
 -}
 positionOf : Shape msg -> ( Number, Number )
-positionOf (Shape x y _ _ _ _ _ _) =
+positionOf (Shape x y _ _ _ _ _ _ _) =
     ( x, y )
 
 
 {-| Returns the angle of rotation of a shape.
 -}
 rotationOf : Shape msg -> Number
-rotationOf (Shape _ _ r _ _ _ _ _) =
+rotationOf (Shape _ _ r _ _ _ _ _ _) =
     r
 
 
 {-| Returns the scaling set on a shape, as a pair (horizontalScaling, verticalScaling).
 -}
 scaleOf : Shape msg -> ( Number, Number )
-scaleOf (Shape _ _ _ sx sy _ _ _) =
+scaleOf (Shape _ _ _ sx sy _ _ _ _) =
     ( sx, sy )
 
 
-formOf (Shape _ _ _ _ _ _ _ form) =
+formOf (Shape _ _ _ _ _ _ _ _ form) =
     form
 
 
 {-| Extracts the center from any shape.
 -}
 center : Shape msg -> ( Number, Number )
-center (Shape x y _ _ _ _ _ shape) =
-    case shape of
+center (Shape x y _ _ _ _ _ _ form) =
+    case form of
         Group [] ->
             ( x, y )
 
@@ -2489,7 +2536,7 @@ center (Shape x y _ _ _ _ _ shape) =
 {-| Calculates (the currently very crude approximation of) the extent (size) of any (group of) shape(s).
 -}
 extent : Shape msg -> Number
-extent (Shape _ _ _ _ _ _ _ form) =
+extent (Shape _ _ _ _ _ _ _ _ form) =
     case form of
         Circle _ _ size ->
             size
@@ -2552,7 +2599,7 @@ transformCoordinates x y a sx sy ( cx, cy ) =
     ( (px * cos d) + (py * sin -d) + x, (px * sin d) + (py * cos -d) + y )
 
 
-transformUsing shape (Shape x y r sx sy alpha msg form) =
+transformUsing shape (Shape x y r sx sy alpha clp msg form) =
     let
         ( cx, cy ) =
             positionOf shape
@@ -2566,7 +2613,7 @@ transformUsing shape (Shape x y r sx sy alpha msg form) =
         sr =
             rotationOf shape
     in
-    Shape ((px * cos sr) + (py * sin sr) + cx) ((px * sin sr) + (py * cos sr) + cy) (r + sr) (sx + ssx) (sy + ssy) alpha msg form
+    Shape ((px * cos sr) + (py * sin sr) + cx) ((px * sin sr) + (py * cos sr) + cy) (r + sr) (sx + ssx) (sy + ssy) alpha clp msg form
 
 
 
@@ -2675,7 +2722,7 @@ render screen shapes =
             , width "100%"
             , height "100%"
             ]
-            (List.filterMap renderShape shapes)
+            (filterIndexedMap (renderShape 0) shapes)
         , shapes
             |> audioElements
             |> Html.aside [ H.style "position" "fixed" ]
@@ -2690,7 +2737,7 @@ render screen shapes =
 -}
 sound : String -> Shape msg
 sound url =
-    Shape 0 0 0 1 1 1 Nothing (Sound url)
+    Shape 0 0 0 1 1 1 [] Nothing (Sound url)
 
 
 audioElements shapes =
@@ -2702,7 +2749,7 @@ audioElements shapes =
             audioElementsFor shape ++ audioElements rest
 
 
-audioElementsFor (Shape _ _ _ _ _ _ _ form) =
+audioElementsFor (Shape _ _ _ _ _ _ _ _ form) =
     case form of
         Sound url ->
             [ Html.audio [ H.src url, H.autoplay True ] [] ]
@@ -2719,12 +2766,12 @@ audioElementsFor (Shape _ _ _ _ _ _ _ form) =
 {-| Make a shape link to a website:
 
     circle red 50
-        |> link "elm-lang.org"
+        |> link "https://elm-lang.org"
 
 -}
 link : String -> Shape msg -> Shape msg
 link url shape =
-    Shape 0 0 0 1 1 1 Nothing (Link url shape)
+    Shape 0 0 0 1 1 1 [] Nothing (Link url shape)
 
 
 
@@ -2732,60 +2779,130 @@ link url shape =
 --
 
 
-renderShape : Shape msg -> Maybe (Svg msg)
-renderShape (Shape x y angle sx sy alpha msg form) =
+renderShape : Int -> Int -> Shape msg -> Maybe (Svg msg)
+renderShape depth index (Shape x y angle sx sy alpha clp msg form) =
     case form of
         Circle color outline radius ->
-            renderCircle color outline radius x y angle sx sy alpha msg
+            renderCircle depth index color outline radius x y angle sx sy alpha clp msg
                 |> Just
 
         Oval color outline width height ->
-            renderOval color outline width height x y angle sx sy alpha msg
+            renderOval depth index color outline width height x y angle sx sy alpha clp msg
                 |> Just
 
         Rectangle color outline width height ->
-            renderRectangle color outline width height x y angle sx sy alpha msg
+            renderRectangle depth index color outline width height x y angle sx sy alpha clp msg
                 |> Just
 
         Ngon color outline n radius ->
-            renderNgon color outline n radius x y angle sx sy alpha msg
+            renderNgon depth index color outline n radius x y angle sx sy alpha clp msg
                 |> Just
 
         Polygon color outline points ->
-            renderPolygon color outline points x y angle sx sy alpha msg
+            renderPolygon depth index color outline points x y angle sx sy alpha clp msg
                 |> Just
 
         Image width height src ->
-            renderImage width height src x y angle sx sy alpha msg
+            renderImage depth index width height src x y angle sx sy alpha clp msg
                 |> Just
 
         Words color outline font string ->
-            renderWords color outline font string x y angle sx sy alpha msg
+            renderWords depth index color outline font string x y angle sx sy alpha clp msg
                 |> Just
 
         SvgPath color outline segments ->
-            renderPath color outline segments x y angle sx sy alpha msg
+            renderPath depth index color outline segments x y angle sx sy alpha clp msg
                 |> Just
 
         Group shapes ->
-            g (transform (renderTransform x y angle sx sy) :: renderAlpha alpha ++ renderOnClick msg)
-                (List.filterMap renderShape shapes)
+            g
+                (transform (renderTransform x y angle sx sy)
+                    :: renderAlpha alpha
+                    ++ renderOnClick msg
+                    ++ renderClipPathRef depth index clp
+                )
+                (filterIndexedMap (renderShape (depth + 1)) shapes)
+                |> renderClippings depth index x y clp
                 |> Just
 
         Sound _ ->
             Nothing
 
         Link url shape ->
-            a (Svg.Attributes.xlinkHref url :: transform (renderTransform x y angle sx sy) :: renderAlpha alpha) (List.filterMap renderShape [ shape ])
+            a
+                (xlinkHref url
+                    :: transform (renderTransform x y angle sx sy)
+                    :: renderAlpha alpha
+                    ++ renderClipPathRef depth index clp
+                )
+                (filterIndexedMap (renderShape depth) [ shape ])
+                |> renderClippings depth index x y clp
                 |> Just
+
+
+filterIndexedMap fun =
+    List.indexedMap fun >> List.filterMap identity
+
+
+renderClippings : Int -> Int -> Number -> Number -> List (Clipping msg) -> Svg msg -> Svg msg
+renderClippings depth index x y clippings clippedShape =
+    if clippings == [] then
+        clippedShape
+
+    else
+        Svg.g []
+            [ clippings
+                |> List.filterMap
+                    (\clipping ->
+                        case clipping of
+                            CutTo clippingShapes ->
+                                Just
+                                    (filterIndexedMap
+                                        (\i s ->
+                                            s
+                                                |> move x y
+                                                |> renderShape (depth + 1) i
+                                        )
+                                        clippingShapes
+                                    )
+
+                            CutAway _ ->
+                                Nothing
+                    )
+                |> List.concat
+                |> Svg.clipPath
+                    [ Svg.Attributes.id (idFor "clip" depth index)
+                    ]
+            , clippedShape
+            ]
+
+
+renderClipPathRef depth index clippingShapes =
+    if clippingShapes == [] then
+        []
+
+    else
+        [ Svg.Attributes.clipPath ("url(#" ++ idFor "clip" depth index ++ ")") ]
+
+
+idFor prefix depth index =
+    prefix ++ "_" ++ String.fromInt depth ++ "_" ++ String.fromInt index
+
+
+prependIf predicate item list =
+    if predicate then
+        item :: list
+
+    else
+        list
 
 
 
 -- RENDER CIRCLE AND OVAL
 
 
-renderCircle : Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderCircle color outline radius x y angle sx sy alpha msg =
+renderCircle : Int -> Int -> Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderCircle depth index color outline radius x y angle sx sy alpha clp msg =
     Svg.circle
         (r (String.fromFloat radius)
             :: fill (renderColor color)
@@ -2793,12 +2910,14 @@ renderCircle color outline radius x y angle sx sy alpha msg =
             :: renderAlpha alpha
             ++ renderOnClick msg
             ++ renderOutline outline
+            ++ renderClipPathRef depth index clp
         )
         []
+        |> renderClippings depth index radius -radius clp
 
 
-renderOval : Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderOval color outline width height x y angle sx sy alpha msg =
+renderOval : Int -> Int -> Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderOval depth index color outline width height x y angle sx sy alpha clp msg =
     ellipse
         (rx (String.fromFloat (width / 2))
             :: ry (String.fromFloat (height / 2))
@@ -2807,16 +2926,18 @@ renderOval color outline width height x y angle sx sy alpha msg =
             :: renderAlpha alpha
             ++ renderOnClick msg
             ++ renderOutline outline
+            ++ renderClipPathRef depth index clp
         )
         []
+        |> renderClippings depth index (width / 2) (-height / 2) clp
 
 
 
 -- RENDER RECTANGLE AND IMAGE
 
 
-renderRectangle : Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderRectangle color outline w h x y angle sx sy alpha msg =
+renderRectangle : Int -> Int -> Color -> Outline -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderRectangle depth index color outline w h x y angle sx sy alpha clp msg =
     rect
         (width (String.fromFloat w)
             :: height (String.fromFloat h)
@@ -2825,8 +2946,10 @@ renderRectangle color outline w h x y angle sx sy alpha msg =
             :: renderAlpha alpha
             ++ renderOnClick msg
             ++ renderOutline outline
+            ++ renderClipPathRef depth index clp
         )
         []
+        |> renderClippings depth index (w / 2) (-h / 2) clp
 
 
 renderRectTransform : Number -> Number -> Number -> Number -> Number -> Number -> Number -> String
@@ -2839,8 +2962,8 @@ renderRectTransform width height x y angle sx sy =
         ++ ")"
 
 
-renderImage : Number -> Number -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderImage w h src x y angle sx sy alpha msg =
+renderImage : Int -> Int -> Number -> Number -> String -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderImage depth index w h src x y angle sx sy alpha clp msg =
     Svg.image
         (xlinkHref src
             :: imageRendering "pixelated"
@@ -2849,16 +2972,18 @@ renderImage w h src x y angle sx sy alpha msg =
             :: transform (renderRectTransform w h x y angle sx sy)
             :: renderAlpha alpha
             ++ renderOnClick msg
+            ++ renderClipPathRef depth index clp
         )
         []
+        |> renderClippings depth index x y clp
 
 
 
 -- RENDER NGON
 
 
-renderNgon : Color -> Outline -> Int -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderNgon color outline n radius x y angle sx sy alpha msg =
+renderNgon : Int -> Int -> Color -> Outline -> Int -> Number -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderNgon depth index color outline n radius x y angle sx sy alpha clp msg =
     Svg.polygon
         (points (toNgonPoints 0 n radius "")
             :: fill (renderColor color)
@@ -2866,8 +2991,10 @@ renderNgon color outline n radius x y angle sx sy alpha msg =
             :: renderAlpha alpha
             ++ renderOnClick msg
             ++ renderOutline outline
+            ++ renderClipPathRef depth index clp
         )
         []
+        |> renderClippings depth index x y clp
 
 
 toNgonPoints : Int -> Int -> Float -> String -> String
@@ -2893,8 +3020,8 @@ toNgonPoints i n radius string =
 -- RENDER POLYGON
 
 
-renderPolygon : Color -> Outline -> List ( Number, Number ) -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderPolygon color outline coordinates x y angle sx sy alpha msg =
+renderPolygon : Int -> Int -> Color -> Outline -> List ( Number, Number ) -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderPolygon depth index color outline coordinates x y angle sx sy alpha clp msg =
     Svg.polygon
         (points (List.foldl addPoint "" coordinates)
             :: fill (renderColor color)
@@ -2902,8 +3029,10 @@ renderPolygon color outline coordinates x y angle sx sy alpha msg =
             :: renderAlpha alpha
             ++ renderOnClick msg
             ++ renderOutline outline
+            ++ renderClipPathRef depth index clp
         )
         []
+        |> renderClippings depth index x y clp
 
 
 addPoint : ( Float, Float ) -> String -> String
@@ -2915,31 +3044,27 @@ addPoint ( x, y ) str =
 -- RENDER PATH
 
 
-renderPath : Color -> Outline -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderPath color outline p x y angle sx sy alpha msg =
+renderPath : Int -> Int -> Color -> Outline -> String -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderPath depth index color outline p x y angle sx sy alpha clp msg =
     Svg.path
         (d p
             :: fill (renderColor color)
             :: transform (renderTransform x y angle sx sy)
             :: renderAlpha alpha
-            ++ (case outline of
-                    NoOutline ->
-                        []
-
-                    Outline c w ->
-                        [ stroke (renderColor c), strokeWidth (String.fromFloat w) ]
-               )
             ++ renderOnClick msg
+            ++ renderOutline outline
+            ++ renderClipPathRef depth index clp
         )
         []
+        |> renderClippings depth index x y clp
 
 
 
 -- RENDER WORDS
 
 
-renderWords : Color -> Outline -> Font -> String -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
-renderWords color outline maybeFont string x y angle sx sy alpha msg =
+renderWords : Int -> Int -> Color -> Outline -> Font -> String -> Number -> Number -> Number -> Number -> Number -> Number -> List (Clipping msg) -> Maybe msg -> Svg msg
+renderWords depth index color outline maybeFont string x y angle sx sy alpha clp msg =
     let
         font =
             maybeFont
@@ -2955,9 +3080,11 @@ renderWords color outline maybeFont string x y angle sx sy alpha msg =
             ++ renderOnClick msg
             ++ font
             ++ renderOutline outline
+            ++ renderClipPathRef depth index clp
         )
         [ text string
         ]
+        |> renderClippings depth index x y clp
 
 
 
@@ -3116,7 +3243,7 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
 -}
 svgPath : Color -> String -> Shape msg
 svgPath color p =
-    Shape 0 0 0 1 1 1 Nothing (SvgPath transparent (Outline color 1) p)
+    Shape 0 0 0 1 1 1 [] Nothing (SvgPath transparent (Outline color 1) p)
 
 
 {-| Draw a line with specified thickness from a list of coordinates
@@ -3146,7 +3273,7 @@ line color thickness coordlist =
                                     )
                             )
     in
-    Shape 0 0 0 1 1 1 Nothing (SvgPath transparent (Outline color thickness) p)
+    Shape 0 0 0 1 1 1 [] Nothing (SvgPath transparent (Outline color thickness) p)
 
 
 {-| Draw a line between two points with specified thickness
