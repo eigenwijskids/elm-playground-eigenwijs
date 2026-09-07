@@ -1,7 +1,7 @@
 module Eigenwijs.Playground exposing
     ( picture, animation, game
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
-    , lineBetween, line, svgPath
+    , lineBetween, line, svgPath, svgShape
     , sound
     , withOutline, withStroke, withFill
     , words, withFont
@@ -38,7 +38,7 @@ module Eigenwijs.Playground exposing
 # Shapes
 
 @docs Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
-@docs lineBetween, line, svgPath
+@docs lineBetween, line, svgPath, svgShape
 
 
 # Sounds
@@ -1145,6 +1145,7 @@ type Form msg
     | Polygon Color Outline (List ( Number, Number ))
     | Image Number Number String
     | SvgPath Color Outline String
+    | SvgShape (Svg msg)
     | Words Color Outline Font String
     | Group (List (Shape msg))
     | Sound String
@@ -1184,6 +1185,9 @@ withOutline color thickness ((Shape x y a sx sy o n f) as shape) =
 
         SvgPath c _ s ->
             Shape x y a sx sy o n (SvgPath c (Outline color thickness) s)
+
+        SvgShape s ->
+            Shape x y a sx sy o n (SvgShape s)
 
         _ ->
             shape
@@ -2417,6 +2421,9 @@ toPolygon2d (Shape x y rot sx sy o name f) =
         SvgPath _ _ _ ->
             Polygon2d.singleLoop []
 
+        SvgShape _ ->
+            Polygon2d.singleLoop []
+
         Sound _ ->
             Polygon2d.singleLoop []
 
@@ -2519,6 +2526,9 @@ extent (Shape _ _ _ _ _ _ _ form) =
             List.foldl (\s e -> Basics.max e (extent s)) 0 shapes
 
         SvgPath _ _ segments ->
+            0
+
+        SvgShape _ ->
             0
 
         Sound _ ->
@@ -2743,6 +2753,10 @@ renderShape (Shape x y angle sx sy alpha msg form) =
             renderPath color outline segments x y angle sx sy alpha msg
                 |> Just
 
+        SvgShape shape ->
+            renderSvgShape shape x y angle sx sy alpha msg
+                |> Just
+
         Group shapes ->
             g (transform (renderTransform x y angle sx sy) :: renderAlpha alpha ++ renderOnClick msg)
                 (List.filterMap renderShape shapes)
@@ -2904,6 +2918,17 @@ renderPath color outline p x y angle sx sy alpha msg =
             ++ renderOnClick msg
         )
         []
+
+
+
+-- RENDER SVGSHAPE
+
+
+renderSvgShape : Svg msg -> Number -> Number -> Number -> Number -> Number -> Number -> Maybe msg -> Svg msg
+renderSvgShape shape x y angle sx sy alpha msg =
+    Svg.g
+        (transform (renderTransform x y angle sx sy) :: renderAlpha alpha)
+        [ shape ]
 
 
 
@@ -3089,6 +3114,13 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
 svgPath : Color -> String -> Shape msg
 svgPath color p =
     Shape 0 0 0 1 1 1 Nothing (SvgPath transparent (Outline color 1) p)
+
+
+{-| Use an svg image as a shape
+-}
+svgShape : Svg msg -> Shape msg
+svgShape shape =
+    Shape 0 0 0 1 1 1 Nothing (SvgShape shape)
 
 
 {-| Draw a line with specified thickness from a list of coordinates
