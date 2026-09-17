@@ -1,5 +1,5 @@
 module Eigenwijs.Playground exposing
-    ( picture, animation, game
+    ( picture, animation, game, networkGame
     , Shape, circle, oval, square, rectangle, triangle, pentagon, hexagon, octagon, polygon
     , lineBetween, line, svgPath, svgShape
     , sound
@@ -32,7 +32,7 @@ module Eigenwijs.Playground exposing
 
 # Playgrounds
 
-@docs picture, animation, game
+@docs picture, animation, game, networkGame
 
 
 # Shapes
@@ -159,8 +159,9 @@ import Browser.Dom as Dom
 import Browser.Events as E
 import Html
 import Html.Attributes as H
+import Http
 import Json.Decode as D
-import Json.Encode
+import Json.Encode as E
 import Point2d
 import Polygon2d exposing (Polygon2d)
 import Quantity exposing (Unitless)
@@ -279,6 +280,20 @@ type alias Computer =
     , screen : Screen
     , time : Time
     , audio : Audio
+    , inbox : List Message
+    , secondsBeforeSend : Number
+    }
+
+
+
+-- MESSAGING
+
+
+type alias Message =
+    { sender : String
+    , subject : String
+    , predicate : String
+    , object : String
     }
 
 
@@ -762,6 +777,9 @@ animationUpdate msg ((Animation v s t) as state) =
         KeyChanged _ _ ->
             state
 
+        MessagesReceived _ ->
+            state
+
         MouseMove _ _ ->
             state
 
@@ -855,9 +873,116 @@ game viewMemory updateMemory initialMemory =
         }
 
 
+{-| Create a network game; a game that has a messages `inbox` field in Computer
+and a messages `outbox` as a field in its memory. The game takes a Connection
+parameter. Messages sent are tagged with your sender name, configured as
+`name` in the Connection.
+-}
+networkGame :
+    Connection
+    -> (Computer -> WithMessages memory -> List (Shape Msg))
+    -> (Computer -> WithMessages memory -> WithMessages memory)
+    -> WithMessages memory
+    -> Program D.Value (Game (WithMessages memory)) Msg
+networkGame connection viewMemory updateMemory initialMemory =
+    let
+        view model =
+            { title = "Network game"
+            , body = [ gameView viewMemory model ]
+            }
+
+        update msg model =
+            gameUpdate updateMemory msg model
+                |> withCommandsFromMessages connection
+    in
+    Browser.document
+        { init = gameInit initialMemory
+        , view = view
+        , update = update
+        , subscriptions = gameSubscriptions
+        }
+
+
+{-| A network Connection with server url, sender name, and the send interval
+in seconds.
+-}
+type alias Connection =
+    { server : String
+    , name : String
+    , sendIntervalInSeconds : Number
+    }
+
+
+type alias WithMessages memory =
+    { memory
+        | outbox : List ( String, String, String )
+    }
+
+
+withCommandsFromMessages : Connection -> Game (WithMessages memory) -> ( Game (WithMessages memory), Cmd Msg )
+withCommandsFromMessages { server, name, sendIntervalInSeconds } (Game visibility font memory computer) =
+    if computer.secondsBeforeSend <= 0 then
+        ( Game visibility
+            font
+            memory
+            { computer
+                | secondsBeforeSend =
+                    if sendIntervalInSeconds < 0.1 then
+                        0.1
+
+                    else
+                        sendIntervalInSeconds
+            }
+        , postMessages server name memory.outbox
+        )
+
+    else
+        ( Game visibility font memory { computer | secondsBeforeSend = computer.secondsBeforeSend - 1 / 60 }
+        , Cmd.none
+        )
+
+
+postMessages : String -> String -> List ( String, String, String ) -> Cmd Msg
+postMessages url sender messages =
+    case String.trim url of
+        "" ->
+            Cmd.none
+
+        trimmedUrl ->
+            Http.post
+                { url = trimmedUrl
+                , expect = Http.expectJson MessagesReceived (D.list messageDecoder)
+                , body =
+                    messages
+                        |> E.list (messageEncoded sender)
+                        |> Http.jsonBody
+                }
+
+
+messageEncoded : String -> ( String, String, String ) -> E.Value
+messageEncoded sender ( subject, predicate, object ) =
+    [ ( "sender", E.string sender )
+    , ( "subject", E.string subject )
+    , ( "predicate", E.string predicate )
+    , ( "object", E.string object )
+    ]
+        |> E.object
+
+
+messageDecoder : D.Decoder Message
+messageDecoder =
+    D.map4 Message
+        (D.field "sender" D.string)
+        (D.field "subject" D.string)
+        (D.field "predicate" D.string)
+        (D.field "object" D.string)
+
+
 initialComputer : Computer
 initialComputer =
-    { mouse = Mouse 0 0 False False []
+    { inbox = []
+    , secondsBeforeSend = 0
+    , mouse = Mouse 0 0 False False []
     , keyboard = emptyKeyboard
     , screen = toScreen 600 600
     , time = beginOfTime
@@ -950,6 +1075,7 @@ type Msg
     | MouseClick
     | MouseButton Bool
     | ClickedName String
+    | MessagesReceived (Result Http.Error (List Message))
 
 
 {-| Game update function
@@ -973,6 +1099,12 @@ gameUpdate updateMemory msg (Game audioContext vis memory computer) =
 
         KeyChanged isDown key ->
             Game audioContext vis memory { computer | keyboard = updateKeyboard isDown key computer.keyboard }
+
+        MessagesReceived (Ok messages) ->
+            Game audioContext vis memory { computer | inbox = messages }
+
+        MessagesReceived (Err _) ->
+            Game audioContext vis memory computer
 
         MouseMove pageX pageY ->
             let
@@ -3078,7 +3210,7 @@ so it can access the WebAudio API. Use in your game program as follows:
 
 -}
 type alias AudioPort msg =
-    Json.Encode.Value -> Cmd msg
+    E.Value -> Cmd msg
 
 
 {-| Create a game with web audio elements such as oscillators.
@@ -3097,7 +3229,7 @@ gameWithAudio toWebAudio audioForMemory viewMemory updateMemory initialMemory =
         update msg ((Game audioContext vis memory computer) as model) =
             ( gameUpdate updateMemory msg model
             , audioForMemory { computer | audio = audioFrom audioContext } memory
-                |> Json.Encode.list WebAudio.encode
+                |> E.list WebAudio.encode
                 |> toWebAudio
             )
     in
