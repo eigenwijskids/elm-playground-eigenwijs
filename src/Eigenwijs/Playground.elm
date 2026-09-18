@@ -1086,10 +1086,10 @@ gameUpdate updateMemory msg (Game audioContext vis memory computer) =
         Tick time ->
             Game audioContext vis (updateMemory { computer | audio = audioFrom audioContext } memory) <|
                 if computer.mouse.click then
-                    { computer | time = Time time, mouse = mouseClick False computer.mouse }
+                    { computer | inbox = [], time = Time time, mouse = mouseClick False computer.mouse }
 
                 else
-                    { computer | time = Time time }
+                    { computer | inbox = [], time = Time time }
 
         GotViewport { viewport } ->
             Game audioContext vis memory { computer | screen = toScreen viewport.width viewport.height }
