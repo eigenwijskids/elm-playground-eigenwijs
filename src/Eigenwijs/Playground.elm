@@ -356,7 +356,13 @@ If someone is pressing the UP and RIGHT arrows, you will see a value like this:
     , shift = False
     , backspace = False
     , keys = Set.fromList [ "ArrowUp", "ArrowRight" ]
+    , keysReleased = Set.Empty
     }
+
+(Note that keyReleased would contain the set from keys if arrow up and
+right are both released. The keysReleased value is only kept for one
+round of update and view, so it is easy to use this value to detect that
+a key was pressed and released at least once.)
 
 So if you want to move a character based on arrows, you could write an update
 like this:
@@ -391,6 +397,7 @@ type alias Keyboard =
     , shift : Bool
     , backspace : Bool
     , keys : Set.Set String
+    , keysReleased : Set.Set String
     }
 
 
@@ -1086,10 +1093,10 @@ gameUpdate updateMemory msg (Game audioContext vis memory computer) =
         Tick time ->
             Game audioContext vis (updateMemory { computer | audio = audioFrom audioContext } memory) <|
                 if computer.mouse.click then
-                    { computer | inbox = [], time = Time time, mouse = mouseClick False computer.mouse }
+                    { computer | inbox = [], time = Time time, keyboard = resetKeysReleased computer.keyboard, mouse = mouseClick False computer.mouse }
 
                 else
-                    { computer | inbox = [], time = Time time }
+                    { computer | inbox = [], time = Time time, keyboard = resetKeysReleased computer.keyboard }
 
         GotViewport { viewport } ->
             Game audioContext vis memory { computer | screen = toScreen viewport.width viewport.height }
@@ -1198,46 +1205,53 @@ emptyKeyboard =
     , shift = False
     , backspace = False
     , keys = Set.empty
+    , keysReleased = Set.empty
     }
 
 
 updateKeyboard : Bool -> String -> Keyboard -> Keyboard
 updateKeyboard isDown key keyboard =
     let
-        keys =
+        ( keys, keysReleased ) =
             if isDown then
-                Set.insert key keyboard.keys
+                ( Set.insert key keyboard.keys, keyboard.keysReleased )
 
             else
-                Set.remove key keyboard.keys
+                ( Set.remove key keyboard.keys, Set.insert key keyboard.keysReleased )
     in
     case key of
         " " ->
-            { keyboard | keys = keys, space = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, space = isDown }
 
         "Enter" ->
-            { keyboard | keys = keys, enter = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, enter = isDown }
 
         "Shift" ->
-            { keyboard | keys = keys, shift = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, shift = isDown }
 
         "Backspace" ->
-            { keyboard | keys = keys, backspace = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, backspace = isDown }
 
         "ArrowUp" ->
-            { keyboard | keys = keys, up = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, up = isDown }
 
         "ArrowDown" ->
-            { keyboard | keys = keys, down = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, down = isDown }
 
         "ArrowLeft" ->
-            { keyboard | keys = keys, left = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, left = isDown }
 
         "ArrowRight" ->
-            { keyboard | keys = keys, right = isDown }
+            { keyboard | keys = keys, keysReleased = keysReleased, right = isDown }
 
         _ ->
-            { keyboard | keys = keys }
+            { keyboard | keys = keys, keysReleased = keysReleased }
+
+
+resetKeysReleased keyboard =
+    { keyboard
+        | keysReleased = Set.empty
+    }
 
 
 
